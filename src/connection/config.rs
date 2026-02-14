@@ -182,5 +182,4 @@ impl Config {
     pub fn get_addr(&self) -> String {
         format!("{}:{}", self.get_host(), self.get_port())
     }
-
 }
