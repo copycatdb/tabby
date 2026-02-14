@@ -13,83 +13,21 @@ use std::{
     task::{self, Poll},
 };
 
-/// A set of `Streams` of [`ResultItem`] values, which can be either result
-/// metadata or a row.
+/// A stream of [`ResultItem`] values returned from a query execution.
 ///
-/// The `ResultStream` needs to be polled empty before sending another query to
-/// the [`Client`], failing to do so causes a flush before the next query,
-/// slowing it down in an undeterministic way.
+/// Each query in a batch produces a metadata item followed by zero or more
+/// row items. When a new metadata item appears, it signals the start of the
+/// next result set.
 ///
-/// Every stream starts with metadata, describing the structure of the incoming
-/// rows, e.g. the columns in the order they are presented in every row.
+/// The stream **must** be consumed (or dropped) before sending another query
+/// to the [`Client`](crate::Client).
 ///
-/// If after consuming rows from the stream, another metadata result arrives, it
-/// means the stream has multiple results from different queries. This new
-/// metadata item will describe the next rows from here forwards.
+/// # Convenience Methods
 ///
-/// If having one set of results in the response, using [`into_row_stream`]
-/// might be more convenient to use.
-///
-/// The struct provides non-streaming APIs with [`into_results`],
-/// [`into_first_result`] and [`into_row`].
-///
-/// # Example
-///
-/// ```ignore
-/// # use tabby::{Config, ResultItem};
-/// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-/// # use std::env;
-/// # use futures_util::stream::TryStreamExt;
-/// # #[tokio::main]
-/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-/// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-/// # );
-/// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
-/// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
-/// # tcp.set_nodelay(true)?;
-/// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-/// let mut stream = client
-///     .execute(
-///         "SELECT @P1 AS first; SELECT @P2 AS second",
-///         &[&1i32, &2i32],
-///     )
-///     .await?;
-///
-/// // The stream consists of four items, in the following order:
-/// // - Metadata from `SELECT 1`
-/// // - The only resulting row from `SELECT 1`
-/// // - Metadata from `SELECT 2`
-/// // - The only resulting row from `SELECT 2`
-/// while let Some(item) = stream.try_next().await? {
-///     match item {
-///         // our first item is the column data always
-///         ResultItem::Metadata(meta) if meta.result_index() == 0 => {
-///             // the first result column info can be handled here
-///         }
-///         // ... and from there on from 0..N rows
-///         ResultItem::Row(row) if row.result_index() == 0 => {
-///             assert_eq!(Some(1), row.get(0));
-///         }
-///         // the second result set returns first another metadata item
-///         ResultItem::Metadata(meta) => {
-///             // .. handling
-///         }
-///         // ...and, again, we get rows from the second resultset
-///         ResultItem::Row(row) => {
-///             assert_eq!(Some(2), row.get(0));
-///         }
-///     }
-/// }
-/// # Ok(())
-/// # }
-/// ```
-///
-/// [`Client`]: struct.Client.html
-/// [`into_row_stream`]: struct.ResultStream.html#method.into_row_stream
-/// [`into_results`]: struct.ResultStream.html#method.into_results
-/// [`into_first_result`]: struct.ResultStream.html#method.into_first_result
-/// [`into_row`]: struct.ResultStream.html#method.into_row
+/// - [`into_row`](Self::into_row) — first row of the first result
+/// - [`into_first_result`](Self::into_first_result) — all rows of the first result
+/// - [`into_results`](Self::into_results) — all result sets collected in memory
+/// - [`into_row_stream`](Self::into_row_stream) — a stream of rows, skipping metadata
 pub struct ResultStream<'a> {
     token_stream: Peekable<BoxStream<'a, crate::Result<ServerMessage>>>,
     columns: Option<Arc<Vec<Column>>>,
@@ -148,55 +86,10 @@ impl<'a> ResultStream<'a> {
         Ok(())
     }
 
-    /// The list of columns either for the current result set, or for the next
-    /// one. If the stream is just created, or if the next item in the stream
-    /// contains metadata, the metadata will be taken from the stream. Otherwise
-    /// the columns will be returned from the cache and reflect on the current
-    /// result set.
+    /// Returns the column metadata for the current (or upcoming) result set.
     ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # use tabby::Config;
-    /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-    /// # use std::env;
-    /// # use futures_util::stream::TryStreamExt;
-    /// # #[tokio::main]
-    /// # async fn main() -> anyhow::Result<()> {
-    /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-    /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-    /// # );
-    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
-    /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
-    /// # tcp.set_nodelay(true)?;
-    /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-    /// let mut stream = client
-    ///     .execute(
-    ///         "SELECT @P1 AS first; SELECT @P2 AS second",
-    ///         &[&1i32, &2i32],
-    ///     )
-    ///     .await?;
-    ///
-    /// // Nothing is fetched, the first result set starts.
-    /// let cols = stream.columns().await?.unwrap();
-    /// assert_eq!("first", cols[0].name());
-    ///
-    /// // Move over the metadata.
-    /// stream.try_next().await?;
-    ///
-    /// // We're in the first row, seeing the metadata for that set.
-    /// let cols = stream.columns().await?.unwrap();
-    /// assert_eq!("first", cols[0].name());
-    ///
-    /// // Move over the only row in the first set.
-    /// stream.try_next().await?;
-    ///
-    /// // End of the first set, getting the metadata by peaking the next item.
-    /// let cols = stream.columns().await?.unwrap();
-    /// assert_eq!("second", cols[0].name());
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// If the next item in the stream is metadata, it will be consumed and
+    /// cached. Otherwise the previously cached columns are returned.
     pub async fn columns(&mut self) -> crate::Result<Option<&[Column]>> {
         use ServerMessage::*;
 
@@ -230,8 +123,9 @@ impl<'a> ResultStream<'a> {
         Ok(self.columns.as_ref().map(|c| c.as_slice()))
     }
 
-    /// Collects results from all queries in the stream into memory in the order
-    /// of querying.
+    /// Collects all result sets into memory as `Vec<Vec<Row>>`.
+    ///
+    /// Each inner `Vec<Row>` corresponds to one result set, in query order.
     pub async fn into_results(mut self) -> crate::Result<Vec<Vec<Row>>> {
         let mut results: Vec<Vec<Row>> = Vec::new();
         let mut result: Option<Vec<Row>> = None;
@@ -260,8 +154,8 @@ impl<'a> ResultStream<'a> {
         Ok(results)
     }
 
-    /// Collects the output of the first query, dropping any further
-    /// results.
+    /// Collects the rows of the first result set, dropping any subsequent
+    /// result sets.
     pub async fn into_first_result(self) -> crate::Result<Vec<Row>> {
         let mut results = self.into_results().await?.into_iter();
         let rows = results.next().unwrap_or_default();
@@ -269,15 +163,15 @@ impl<'a> ResultStream<'a> {
         Ok(rows)
     }
 
-    /// Collects the first row from the output of the first query, dropping any
-    /// further rows.
+    /// Returns the first row of the first result set, or `None` if empty.
     pub async fn into_row(self) -> crate::Result<Option<Row>> {
         let mut results = self.into_first_result().await?.into_iter();
 
         Ok(results.next())
     }
 
-    /// Convert the stream into a stream of rows, skipping metadata items.
+    /// Converts this stream into a stream of [`Row`]s only, filtering out
+    /// metadata and message items.
     pub fn into_row_stream(self) -> BoxStream<'a, crate::Result<Row>> {
         let s = self.try_filter_map(|item| async {
             match item {
