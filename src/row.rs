@@ -11,10 +11,10 @@ use std::{fmt::Display, sync::Arc};
 /// [`DataType`](crate::DataType) information, and nullability.
 #[derive(Debug, Clone)]
 pub struct Column {
-    pub(crate) name: String,
-    pub(crate) column_type: ColumnType,
-    pub(crate) type_info: Option<crate::protocol::wire::DataType>,
-    pub(crate) nullable: Option<bool>,
+    pub name: String,
+    pub column_type: ColumnType,
+    pub type_info: Option<crate::protocol::wire::DataType>,
+    pub nullable: Option<bool>,
 }
 
 impl Column {
@@ -253,9 +253,9 @@ impl From<&DataType> for ColumnType {
 /// ```
 #[derive(Debug)]
 pub struct Row {
-    pub(crate) columns: Arc<Vec<Column>>,
-    pub(crate) data: RowMessage<'static>,
-    pub(crate) result_index: usize,
+    pub columns: Arc<Vec<Column>>,
+    pub data: RowMessage<'static>,
+    pub result_index: usize,
 }
 
 pub trait QueryIdx

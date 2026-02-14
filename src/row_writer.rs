@@ -63,6 +63,9 @@ pub trait RowWriter {
 ///
 /// This is used internally so the old `Row`-based path can coexist with
 /// the direct-decode path.
+///
+/// Consider using the `claw` crate which provides this as part of its
+/// high-level client API.
 pub struct SqlValueWriter {
     /// The collected column values for the current row.
     pub values: Vec<crate::protocol::wire::SqlValue<'static>>,

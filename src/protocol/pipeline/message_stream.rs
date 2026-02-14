@@ -33,7 +33,7 @@ pub enum ServerMessage {
     Error(ServerError),
 }
 
-pub(crate) struct TokenStream<'a, S: AsyncRead + AsyncWrite + Unpin + Send> {
+pub struct TokenStream<'a, S: AsyncRead + AsyncWrite + Unpin + Send> {
     conn: &'a mut Connection<S>,
     last_error: Option<Error>,
 }
@@ -42,7 +42,7 @@ impl<'a, S> TokenStream<'a, S>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send,
 {
-    pub(crate) fn new(conn: &'a mut Connection<S>) -> Self {
+    pub fn new(conn: &'a mut Connection<S>) -> Self {
         Self {
             conn,
             last_error: None,

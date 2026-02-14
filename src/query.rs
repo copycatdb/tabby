@@ -3,8 +3,12 @@ use std::borrow::Cow;
 use futures_util::io::{AsyncRead, AsyncWrite};
 
 use crate::{
-    Client, ExecuteResult, IntoSqlOwned, ResultStream, SqlValue,
-    protocol::{pipeline::TokenStream, wire::RpcProcId},
+    ExecuteResult, IntoSqlOwned,
+    connection::Client,
+    protocol::{
+        pipeline::{ResultStream, TokenStream},
+        wire::{RpcProcId, SqlValue},
+    },
 };
 
 /// A dynamically parameterized query object.

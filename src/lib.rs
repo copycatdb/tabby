@@ -3,49 +3,9 @@
 //! A pure Rust implementation of the TDS (Tabular Data Stream) 7.4+ protocol
 //! for Microsoft SQL Server.
 //!
-//! `tabby` provides an async client for connecting to SQL Server, executing
-//! queries with parameterized inputs, reading result rows, and performing bulk
-//! inserts — all without any C dependencies.
-//!
-//! # Quick Start
-//!
-//! ```no_run
-//! use tabby::{AuthMethod, Client, Config};
-//! use tokio_util::compat::TokioAsyncWriteCompatExt;
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let mut config = Config::new();
-//!     config.host("localhost");
-//!     config.port(1433);
-//!     config.authentication(AuthMethod::sql_server("sa", "your_password"));
-//!     config.trust_cert();
-//!
-//!     let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
-//!     tcp.set_nodelay(true)?;
-//!
-//!     let mut client = Client::connect(config, tcp.compat_write()).await?;
-//!
-//!     // Execute a query and read rows
-//!     let stream = client.execute("SELECT @P1 AS greeting", &[&"hello"]).await?;
-//!     let row = stream.into_row().await?.unwrap();
-//!     let greeting: &str = row.get("greeting").unwrap();
-//!     println!("{greeting}");
-//!
-//!     Ok(())
-//! }
-//! ```
-//!
-//! # Key Types
-//!
-//! - [`Client`] — the main entry point for executing queries
-//! - [`Config`] — connection configuration builder
-//! - [`AuthMethod`] — authentication methods (SQL Server, Windows, AAD)
-//! - [`ResultStream`] — streaming query results
-//! - [`Row`] — a single result row with typed column access
-//! - [`Query`] — dynamic parameterized queries
-//! - [`IntoSql`] / [`FromServer`] — parameter and result type conversion traits
-//! - [`SqlValue`] — the underlying TDS value container
+//! `tabby` is the **wire protocol layer**. For the high-level client API
+//! (`Client`, `Row`, `SqlValue`, `Query`, `ResultStream`), use the
+//! [`claw`](https://crates.io/crates/claw) crate instead.
 //!
 //! # Feature Flags
 //!
@@ -65,37 +25,41 @@
 #[macro_use]
 mod macros;
 
-mod connection;
+#[doc(hidden)]
+pub mod connection;
 mod from_server;
 mod into_sql;
-mod query;
-pub use query::Query;
+#[doc(hidden)]
+pub mod query;
 
 pub mod error;
-mod protocol;
-mod result;
-mod row;
+#[doc(hidden)]
+pub mod protocol;
+#[doc(hidden)]
+pub mod result;
+#[doc(hidden)]
+pub mod row;
 pub mod row_writer;
 
 mod discovery;
 
-pub use connection::{AuthMethod, Client, Config};
+// ── Public API: wire-protocol types only ─────────────────────────────
+
+pub use connection::{AuthMethod, Config};
 pub(crate) use error::Error;
 pub use from_server::{FromServer, FromServerOwned};
 pub use into_sql::{IntoSql, IntoSqlOwned};
 pub use protocol::{
     EncryptionLevel,
     numeric::Numeric,
-    pipeline::{ResultItem, ResultStream},
     temporal,
     wire::{
-        BulkImport, ColumnAttribute, DataType, FixedLenType, IntoRowMessage, RowMessage, SqlValue,
-        VarLenType,
+        BulkImport, ColumnAttribute, DataType, FixedLenType, IntoRowMessage, RowMessage, VarLenType,
     },
     xml,
 };
-pub use result::*;
-pub use row::{Column, ColumnType, Row};
+pub use result::ExecuteResult;
+pub use row::{Column, ColumnType};
 pub use row_writer::RowWriter;
 
 use protocol::reader::*;

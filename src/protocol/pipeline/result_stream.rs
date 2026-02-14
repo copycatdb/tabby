@@ -1,7 +1,10 @@
 use crate::protocol::pipeline::ServerMessage;
 use crate::protocol::wire::ColumnAttribute;
 use crate::protocol::wire::ServerNotice;
-use crate::{Column, Row, row::ColumnType};
+use crate::{
+    Column,
+    row::{ColumnType, Row},
+};
 use futures_util::{
     ready,
     stream::{BoxStream, Peekable, Stream, StreamExt, TryStreamExt},
@@ -47,7 +50,7 @@ impl<'a> Debug for ResultStream<'a> {
 }
 
 impl<'a> ResultStream<'a> {
-    pub(crate) fn new(token_stream: BoxStream<'a, crate::Result<ServerMessage>>) -> Self {
+    pub fn new(token_stream: BoxStream<'a, crate::Result<ServerMessage>>) -> Self {
         Self {
             token_stream: token_stream.peekable(),
             columns: None,
@@ -58,7 +61,7 @@ impl<'a> ResultStream<'a> {
 
     /// Moves the stream forward until having result metadata, stream end or an
     /// error.
-    pub(crate) async fn forward_to_metadata(&mut self) -> crate::Result<()> {
+    pub async fn forward_to_metadata(&mut self) -> crate::Result<()> {
         loop {
             let item = Pin::new(&mut self.token_stream)
                 .peek()
@@ -217,7 +220,7 @@ pub enum ResultItem {
 }
 
 impl ResultItem {
-    pub(crate) fn metadata(columns: Arc<Vec<Column>>, result_index: usize) -> Self {
+    pub fn metadata(columns: Arc<Vec<Column>>, result_index: usize) -> Self {
         Self::Metadata(ResultSchema {
             columns,
             result_index,

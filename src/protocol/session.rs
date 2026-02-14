@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 /// Context, that might be required to make sure we understand and are understood by the server
 #[derive(Debug)]
-pub(crate) struct Context {
+pub struct Context {
     version: FeatureLevel,
     packet_size: u32,
     packet_id: u8,
@@ -65,5 +65,11 @@ impl Context {
     #[cfg(any(windows, all(unix, feature = "integrated-auth-gssapi")))]
     pub fn spn(&self) -> &str {
         self.spn.as_deref().unwrap_or("")
+    }
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self::new()
     }
 }

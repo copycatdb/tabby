@@ -2,7 +2,7 @@ use super::{Frame, FrameCodec};
 use asynchronous_codec::Encoder;
 use bytes::{BufMut, BytesMut};
 
-pub(crate) trait Encode<B: BufMut> {
+pub trait Encode<B: BufMut> {
     fn encode(self, dst: &mut B) -> crate::Result<()>;
 }
 

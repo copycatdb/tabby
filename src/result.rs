@@ -19,7 +19,7 @@ pub struct ExecuteResult {
 }
 
 impl<'a> ExecuteResult {
-    pub(crate) async fn new<S: AsyncRead + AsyncWrite + Unpin + Send>(
+    pub async fn new<S: AsyncRead + AsyncWrite + Unpin + Send>(
         connection: &'a mut Connection<S>,
     ) -> crate::Result<Self> {
         let mut token_stream = TokenStream::new(connection).try_unfold();

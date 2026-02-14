@@ -69,6 +69,11 @@ impl VarLenDescriptor {
     }
 
     /// Get the var len context's len.
+    /// Returns true if the descriptor has zero length.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }

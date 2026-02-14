@@ -13,7 +13,7 @@ mod tls_stream;
 
 pub use auth::*;
 pub use config::*;
-pub(crate) use connection::*;
+pub use connection::*;
 
 use crate::protocol::pipeline::ServerMessage;
 use crate::protocol::wire::{
@@ -444,7 +444,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
         self.connection.close().await
     }
 
-    pub(crate) fn rpc_params<'a>(query: impl Into<Cow<'a, str>>) -> Vec<ProcedureParam<'a>> {
+    pub fn rpc_params<'a>(query: impl Into<Cow<'a, str>>) -> Vec<ProcedureParam<'a>> {
         vec![
             ProcedureParam {
                 name: Cow::Borrowed("stmt"),
@@ -459,7 +459,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
         ]
     }
 
-    pub(crate) async fn rpc_perform_query<'a, 'b>(
+    pub async fn rpc_perform_query<'a, 'b>(
         &'a mut self,
         proc_id: RpcProcId,
         mut rpc_params: Vec<ProcedureParam<'b>>,

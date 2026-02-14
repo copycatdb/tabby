@@ -1,7 +1,7 @@
 mod bulk_import;
 mod data_type;
 mod decode;
-pub(crate) mod decode_direct;
+pub mod decode_direct;
 mod encode;
 mod frame;
 pub(crate) mod guid;

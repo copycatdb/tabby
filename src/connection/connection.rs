@@ -49,7 +49,7 @@ use wire::AuthChallenge;
 ///
 /// [`Client`]: struct.Encode.html
 /// [`Frame`]: ../protocol/codec/struct.Frame.html
-pub(crate) struct Connection<S>
+pub struct Connection<S>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send,
 {
@@ -72,7 +72,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Debug for Connection<S> {
 
 impl<S: AsyncRead + AsyncWrite + Unpin + Send> Connection<S> {
     /// Creates a new connection
-    pub(crate) async fn connect(config: Config, tcp_stream: S) -> crate::Result<Connection<S>> {
+    pub async fn connect(config: Config, tcp_stream: S) -> crate::Result<Connection<S>> {
         let context = {
             let mut context = Context::new();
             context.set_spn(config.get_host(), config.get_port());
@@ -202,7 +202,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Connection<S> {
     ///
     /// Please be sure the packet size doesn't exceed the largest allowed size
     /// dictaded by the server.
-    pub(crate) async fn write_to_wire(
+    pub async fn write_to_wire(
         &mut self,
         header: PacketHeader,
         data: BytesMut,
@@ -216,7 +216,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Connection<S> {
     }
 
     /// Sends all pending packages to the wire.
-    pub(crate) async fn flush_sink(&mut self) -> crate::Result<()> {
+    pub async fn flush_sink(&mut self) -> crate::Result<()> {
         self.transport.flush().await
     }
 
@@ -493,7 +493,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Connection<S> {
         Ok(self)
     }
 
-    pub(crate) async fn close(mut self) -> crate::Result<()> {
+    pub async fn close(mut self) -> crate::Result<()> {
         self.transport.close().await
     }
 }

@@ -1,7 +1,7 @@
 mod collation;
 pub mod numeric;
 pub mod pipeline;
-pub(crate) mod reader;
+pub mod reader;
 mod session;
 pub mod temporal;
 pub mod wire;
@@ -9,10 +9,10 @@ pub mod xml;
 
 pub(crate) use collation::*;
 pub(crate) use numeric::*;
-pub(crate) use session::*;
+pub use session::*;
 
 /// The amount of bytes a packet header consists of
-pub(crate) const HEADER_BYTES: usize = 8;
+pub const HEADER_BYTES: usize = 8;
 
 uint_enum! {
     /// The configured encryption level specifying if encryption is required.
