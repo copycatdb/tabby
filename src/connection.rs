@@ -16,6 +16,12 @@ pub use config::*;
 pub use connection::*;
 
 use crate::protocol::pipeline::ServerMessage;
+
+/// Convenience type alias for `Connection` over a tokio TCP stream (with compat layer).
+pub type TcpConnection = Connection<tokio_util::compat::Compat<tokio::net::TcpStream>>;
+
+/// Convenience type alias for `Client` over a tokio TCP stream (with compat layer).
+pub type TcpClient = Client<tokio_util::compat::Compat<tokio::net::TcpStream>>;
 use crate::protocol::wire::{
     ColumnSchema, CompletionMessage, OrderMessage, PacketHeader, ProcedureCall, ProcedureParam,
     RawQuery, ReturnValue, RpcProcId, ServerError, ServerNotice, SessionChange, SqlValue,

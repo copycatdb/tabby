@@ -65,6 +65,10 @@ pub use row_writer::RowWriter;
 #[doc(hidden)]
 pub use connection::Client;
 #[doc(hidden)]
+pub use connection::Connection;
+#[doc(hidden)]
+pub use connection::{TcpClient, TcpConnection};
+#[doc(hidden)]
 pub use protocol::pipeline::{ResultItem, ResultStream};
 #[doc(hidden)]
 pub use protocol::wire::SqlValue;
