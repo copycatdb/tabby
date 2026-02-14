@@ -32,46 +32,73 @@ use futures_util::io::{AsyncRead, AsyncWrite};
 use futures_util::stream::TryStreamExt;
 use std::{borrow::Cow, fmt::Debug};
 
-/// `Client` is the main entry point to the SQL Server, providing query
-/// execution capabilities.
+/// The main entry point for interacting with SQL Server.
 ///
-/// A `Client` is created using the [`Config`], defining the needed
-/// connection options and capabilities.
+/// A `Client` wraps an authenticated TDS connection and exposes methods for
+/// executing parameterized queries ([`execute`](Self::execute)), raw SQL
+/// ([`execute_raw`](Self::execute_raw)), DML statements
+/// ([`run`](Self::run)), and bulk inserts ([`bulk_insert`](Self::bulk_insert)).
+///
+/// Construct a `Client` by calling [`Client::connect`] with a [`Config`] and
+/// an async stream (typically a [`TcpStream`](tokio::net::TcpStream) wrapped
+/// with [`compat_write`](tokio_util::compat::TokioAsyncWriteCompatExt::compat_write)).
 ///
 /// # Example
 ///
-/// ```ignore
-/// # use tabby::{Config, AuthMethod};
+/// ```no_run
+/// use tabby::{AuthMethod, Client, Config};
 /// use tokio_util::compat::TokioAsyncWriteCompatExt;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut config = Config::new();
-///
-/// config.host("0.0.0.0");
+/// config.host("localhost");
 /// config.port(1433);
-/// config.authentication(AuthMethod::sql_server("SA", "<Mys3cureP4ssW0rD>"));
+/// config.authentication(AuthMethod::sql_server("sa", "your_password"));
+/// config.trust_cert();
 ///
 /// let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
 /// tcp.set_nodelay(true)?;
-/// // Client is ready to use.
-/// let client = tabby::Client::connect(config, tcp.compat_write()).await?;
+///
+/// let mut client = Client::connect(config, tcp.compat_write()).await?;
 /// # Ok(())
 /// # }
 /// ```
-///
-/// [`Config`]: struct.Config.html
 #[derive(Debug)]
 pub struct Client<S: AsyncRead + AsyncWrite + Unpin + Send> {
     pub(crate) connection: Connection<S>,
 }
 
 impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
-    /// Uses an instance of [`Config`] to specify the connection
-    /// options required to connect to the database using an established
-    /// tcp connection
+    /// Establishes a connection to SQL Server using the given [`Config`] and
+    /// async stream.
     ///
-    /// [`Config`]: struct.Config.html
+    /// The stream is typically a `TcpStream` wrapped with
+    /// [`compat_write()`](tokio_util::compat::TokioAsyncWriteCompatExt::compat_write)
+    /// to bridge Tokio and futures I/O traits.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the TLS handshake, login, or authentication fails.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use tabby::{AuthMethod, Client, Config};
+    /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut config = Config::new();
+    /// config.host("localhost");
+    /// config.authentication(AuthMethod::sql_server("sa", "password"));
+    /// config.trust_cert();
+    ///
+    /// let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
+    /// tcp.set_nodelay(true)?;
+    /// let mut client = Client::connect(config, tcp.compat_write()).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn connect(config: Config, tcp_stream: S) -> crate::Result<Client<S>> {
         Ok(Client {
             connection: Connection::connect(config, tcp_stream).await?,
@@ -155,49 +182,43 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
         }
     }
 
-    /// Executes SQL statements in the SQL Server, returning the number rows
-    /// affected. Useful for `INSERT`, `UPDATE` and `DELETE` statements. The
-    /// `query` can define the parameter placement by annotating them with
-    /// `@PN`, where N is the index of the parameter, starting from `1`. If
-    /// executing multiple queries at a time, delimit them with `;` and refer to
-    /// [`ExecuteResult`] how to get results for the separate queries.
+    /// Executes SQL statements and returns the number of rows affected.
     ///
-    /// For mapping of Rust types when writing, see the documentation for
-    /// [`IntoSql`]. For reading data from the database, see the documentation for
-    /// [`FromServer`].
+    /// Useful for `INSERT`, `UPDATE`, and `DELETE` statements. Parameters are
+    /// positional, referenced as `@P1`, `@P2`, etc. in the query string.
     ///
-    /// This API is not quite suitable for dynamic query parameters. In these
-    /// cases using a [`Query`] object might be easier.
+    /// For `SELECT` queries that return rows, use [`execute`](Self::execute)
+    /// instead. For dynamic parameters, see [`Query`].
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// # use tabby::Config;
+    /// ```no_run
+    /// # use tabby::{AuthMethod, Client, Config};
     /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-    /// # use std::env;
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-    /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-    /// # );
-    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
+    /// # let mut config = Config::new();
+    /// # config.host("localhost");
+    /// # config.authentication(AuthMethod::sql_server("sa", "password"));
+    /// # config.trust_cert();
     /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
     /// # tcp.set_nodelay(true)?;
-    /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-    /// let results = client
-    ///     .execute(
-    ///         "INSERT INTO ##Test (id) VALUES (@P1), (@P2), (@P3)",
-    ///         &[&1i32, &2i32, &3i32],
+    /// # let mut client = Client::connect(config, tcp.compat_write()).await?;
+    /// let result = client
+    ///     .run(
+    ///         "INSERT INTO #Users (name) VALUES (@P1), (@P2)",
+    ///         &[&"Alice", &"Bob"],
     ///     )
     ///     .await?;
+    ///
+    /// assert_eq!(2, result.total());
     /// # Ok(())
     /// # }
     /// ```
     ///
-    /// [`ExecuteResult`]: struct.ExecuteResult.html
-    /// [`IntoSql`]: trait.IntoSql.html
-    /// [`FromServer`]: trait.FromServer.html
-    /// [`Query`]: struct.Query.html
+    /// # Errors
+    ///
+    /// Returns an error if the query fails or a parameter type mismatch occurs.
     pub async fn run<'a>(
         &mut self,
         query: impl Into<Cow<'a, str>>,
@@ -213,50 +234,46 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
         ExecuteResult::new(&mut self.connection).await
     }
 
-    /// Executes SQL statements in the SQL Server, returning resulting rows.
-    /// Useful for `SELECT` statements. The `query` can define the parameter
-    /// placement by annotating them with `@PN`, where N is the index of the
-    /// parameter, starting from `1`. If executing multiple queries at a time,
-    /// delimit them with `;` and refer to [`ResultStream`] on proper stream
-    /// handling.
+    /// Executes a parameterized query and returns a [`ResultStream`] for
+    /// reading rows.
     ///
-    /// For mapping of Rust types when writing, see the documentation for
-    /// [`IntoSql`]. For reading data from the database, see the documentation for
-    /// [`FromServer`].
+    /// Parameters are positional, referenced as `@P1`, `@P2`, etc. Multiple
+    /// queries can be delimited with `;`, producing multiple result sets in
+    /// the stream.
     ///
-    /// This API can be cumbersome for dynamic query parameters. In these cases,
-    /// if fighting too much with the compiler, using a [`Query`] object might be
-    /// easier.
+    /// For type mappings, see [`IntoSql`] (writing) and [`FromServer`] (reading).
+    /// For dynamic parameters, see [`Query`].
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// # use tabby::Config;
+    /// ```no_run
+    /// # use tabby::{AuthMethod, Client, Config};
     /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-    /// # use std::env;
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-    /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-    /// # );
-    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
+    /// # let mut config = Config::new();
+    /// # config.host("localhost");
+    /// # config.authentication(AuthMethod::sql_server("sa", "password"));
+    /// # config.trust_cert();
     /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
     /// # tcp.set_nodelay(true)?;
-    /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-    /// let stream = client
-    ///     .execute(
-    ///         "SELECT @P1, @P2, @P3",
-    ///         &[&1i32, &2i32, &3i32],
-    ///     )
-    ///     .await?;
+    /// # let mut client = Client::connect(config, tcp.compat_write()).await?;
+    /// let row = client
+    ///     .execute("SELECT @P1 AS id, @P2 AS name", &[&42i32, &"Alice"])
+    ///     .await?
+    ///     .into_row()
+    ///     .await?
+    ///     .unwrap();
+    ///
+    /// let id: i32 = row.get("id").unwrap();
+    /// let name: &str = row.get("name").unwrap();
     /// # Ok(())
     /// # }
     /// ```
     ///
-    /// [`ResultStream`]: struct.ResultStream.html
-    /// [`Query`]: struct.Query.html
-    /// [`IntoSql`]: trait.IntoSql.html
-    /// [`FromServer`]: trait.FromServer.html
+    /// # Errors
+    ///
+    /// Returns an error if the query fails or a parameter type mismatch occurs.
     pub async fn execute<'a, 'b>(
         &'a mut self,
         query: impl Into<Cow<'b, str>>,
@@ -279,36 +296,41 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
         Ok(result)
     }
 
-    /// Execute multiple queries, delimited with `;` and return multiple result
-    /// sets; one for each query.
+    /// Executes raw (unparameterized) SQL and returns a [`ResultStream`].
+    ///
+    /// Useful for DDL statements, multiple batched queries, or cases where
+    /// `sp_executesql` parameterization is not desired.
+    ///
+    /// # Warning
+    ///
+    /// **Do not** pass user-supplied input to this method — use
+    /// [`execute`](Self::execute) with parameters instead to prevent SQL injection.
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// # use tabby::Config;
+    /// ```no_run
+    /// # use tabby::{AuthMethod, Client, Config};
     /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-    /// # use std::env;
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-    /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-    /// # );
-    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
+    /// # let mut config = Config::new();
+    /// # config.host("localhost");
+    /// # config.authentication(AuthMethod::sql_server("sa", "password"));
+    /// # config.trust_cert();
     /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
     /// # tcp.set_nodelay(true)?;
-    /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-    /// let row = client.execute_raw("SELECT 1 AS col").await?.into_row().await?.unwrap();
+    /// # let mut client = Client::connect(config, tcp.compat_write()).await?;
+    /// let row = client
+    ///     .execute_raw("SELECT 1 AS col")
+    ///     .await?
+    ///     .into_row()
+    ///     .await?
+    ///     .unwrap();
+    ///
     /// assert_eq!(Some(1i32), row.get("col"));
     /// # Ok(())
     /// # }
     /// ```
-    ///
-    /// # Warning
-    ///
-    /// Do not use this with any user specified input. Please resort to prepared
-    /// statements using the [`query`] method.
-    ///
-    /// [`query`]: #method.query
     pub async fn execute_raw<'a, 'b>(
         &'a mut self,
         query: impl Into<Cow<'b, str>>,
@@ -331,46 +353,35 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
         Ok(result)
     }
 
-    /// Execute a `BULK INSERT` statement, efficiantly storing a large number of
-    /// rows to a specified table. Note: make sure the input row follows the same
-    /// schema as the table, otherwise calling `send()` will return an error.
+    /// Starts a `BULK INSERT` operation for efficiently loading many rows into
+    /// a table.
+    ///
+    /// The returned [`BulkImport`] handle lets you send rows one at a time.
+    /// Each row must match the table schema (excluding identity / non-updatable
+    /// columns, which are filtered automatically). Call
+    /// [`finalize()`](BulkImport::finalize) when done.
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// # use tabby::{Config, IntoRowMessage};
+    /// ```no_run
+    /// # use tabby::{AuthMethod, Client, Config, IntoRowMessage};
     /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-    /// # use std::env;
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-    /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-    /// # );
-    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
+    /// # let mut config = Config::new();
+    /// # config.host("localhost");
+    /// # config.authentication(AuthMethod::sql_server("sa", "password"));
+    /// # config.trust_cert();
     /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
     /// # tcp.set_nodelay(true)?;
-    /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-    /// let create_table = r#"
-    ///     CREATE TABLE ##bulk_test (
-    ///         id INT IDENTITY PRIMARY KEY,
-    ///         val INT NOT NULL
-    ///     )
-    /// "#;
-    ///
-    /// client.execute_raw(create_table).await?;
-    ///
-    /// // Start the bulk insert with the client.
+    /// # let mut client = Client::connect(config, tcp.compat_write()).await?;
+    /// // Assume ##bulk_test(id INT IDENTITY, val INT NOT NULL) exists.
     /// let mut req = client.bulk_insert("##bulk_test").await?;
     ///
-    /// for i in [0i32, 1i32, 2i32] {
-    ///     let row = (i).into_row();
-    ///
-    ///     // The request will handle flushing to the wire in an optimal way,
-    ///     // balancing between memory usage and IO performance.
-    ///     req.send(row).await?;
+    /// for i in [10i32, 20, 30] {
+    ///     req.send(i.into_row()).await?;
     /// }
     ///
-    /// // The request must be finalized.
     /// let res = req.finalize().await?;
     /// assert_eq!(3, res.total());
     /// # Ok(())
@@ -424,7 +435,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
         BulkImport::new(&mut self.connection, columns)
     }
 
-    /// Closes this database connection explicitly.
+    /// Gracefully closes the connection to the server.
+    ///
+    /// This flushes any pending data and shuts down the underlying transport.
+    /// The `Client` is consumed by this call.
     pub async fn close(self) -> crate::Result<()> {
         self.connection.close().await
     }
