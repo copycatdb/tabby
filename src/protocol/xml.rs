@@ -115,3 +115,65 @@ impl Encode<BytesMut> for XmlData {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn xml_data_new() {
+        let xml = XmlData::new("<root/>");
+        assert_eq!("<root/>", xml.as_ref());
+    }
+
+    #[test]
+    fn xml_data_display() {
+        let xml = XmlData::new("<a>b</a>");
+        assert_eq!("<a>b</a>", format!("{}", xml));
+    }
+
+    #[test]
+    fn xml_data_into_string() {
+        let xml = XmlData::new("<test/>");
+        assert_eq!("<test/>", xml.into_string());
+    }
+
+    #[test]
+    fn xml_data_schema_none() {
+        let xml = XmlData::new("<x/>");
+        assert!(xml.schema().is_none());
+    }
+
+    #[test]
+    fn xml_data_with_schema() {
+        let mut xml = XmlData::new("<x/>");
+        let schema = Arc::new(XmlSchema::new("mydb", "dbo", "mycoll"));
+        xml.set_schema(schema);
+        let s = xml.schema().unwrap();
+        assert_eq!("mydb", s.db_name());
+        assert_eq!("dbo", s.owner());
+        assert_eq!("mycoll", s.collection());
+    }
+
+    #[test]
+    fn xml_data_clone_eq() {
+        let x1 = XmlData::new("<a/>");
+        let x2 = x1.clone();
+        assert_eq!(x1, x2);
+    }
+
+    #[test]
+    fn xml_data_encode() {
+        let xml = XmlData::new("hi");
+        let mut buf = BytesMut::new();
+        xml.encode(&mut buf).unwrap();
+        assert!(!buf.is_empty());
+    }
+
+    #[test]
+    fn xml_schema_debug() {
+        let s = XmlSchema::new("db", "own", "coll");
+        let dbg = format!("{:?}", s);
+        assert!(dbg.contains("db"));
+    }
+}

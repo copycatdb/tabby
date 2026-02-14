@@ -243,7 +243,8 @@ mod tests {
 
     #[test]
     fn error_from_utf8_error() {
-        let e: Error = std::str::from_utf8(b"\xff").unwrap_err().into();
+        let bytes: &[u8] = &[0xff];
+        let e: Error = std::str::from_utf8(bytes).unwrap_err().into();
         assert!(matches!(e, Error::Utf8));
     }
 

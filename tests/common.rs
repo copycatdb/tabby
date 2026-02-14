@@ -14,6 +14,7 @@ pub async fn connect() -> Client<tokio_util::compat::Compat<TcpStream>> {
     Client::connect(config, tcp.compat_write()).await.unwrap()
 }
 
+#[allow(dead_code)]
 pub async fn connect_with_config(
     config: Config,
 ) -> Result<Client<tokio_util::compat::Compat<TcpStream>>, tabby::error::Error> {
