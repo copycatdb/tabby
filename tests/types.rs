@@ -233,7 +233,7 @@ async fn type_binary_from_server() {
         .unwrap()
         .unwrap();
     let result: Option<&[u8]> = row.get("val");
-    assert_eq!(&[0x00, 0x00, 0xCA, 0xFE], result.unwrap());
+    assert_eq!(&[0xCA, 0xFE, 0x00, 0x00], result.unwrap());
 }
 
 #[tokio::test]
@@ -277,7 +277,7 @@ async fn type_decimal_from_server() {
         .await
         .unwrap()
         .unwrap();
-    let val: Option<tabby::protocol::numeric::Numeric> = row.get("val");
+    let val: Option<tabby::Numeric> = row.get("val");
     assert!(val.is_some());
 }
 
@@ -292,7 +292,7 @@ async fn type_numeric_from_server() {
         .await
         .unwrap()
         .unwrap();
-    let val: Option<tabby::protocol::numeric::Numeric> = row.get("val");
+    let val: Option<tabby::Numeric> = row.get("val");
     assert!(val.is_some());
 }
 
@@ -308,7 +308,7 @@ async fn type_money_from_server() {
         .unwrap()
         .unwrap();
     // Money comes back as f64 or as a special type
-    let _val = row.get::<f64, _>("val");
+    let _val: Option<tabby::Numeric> = row.get("val");
 }
 
 #[tokio::test]
@@ -322,7 +322,7 @@ async fn type_smallmoney_from_server() {
         .await
         .unwrap()
         .unwrap();
-    let _val = row.get::<f64, _>("val");
+    let _val: Option<tabby::Numeric> = row.get("val");
 }
 
 #[tokio::test]

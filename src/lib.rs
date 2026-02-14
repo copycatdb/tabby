@@ -8,6 +8,7 @@ mod connection;
 mod from_server;
 mod into_sql;
 mod query;
+pub use query::Query;
 
 pub mod error;
 mod protocol;
@@ -22,9 +23,13 @@ pub use from_server::{FromServer, FromServerOwned};
 pub use into_sql::{IntoSql, IntoSqlOwned};
 pub use protocol::{
     EncryptionLevel,
-    pipeline::ResultStream,
+    numeric::Numeric,
+    pipeline::{ResultItem, ResultStream},
     temporal,
-    wire::{BulkImport, ColumnAttribute, DataType, FixedLenType, RowMessage, SqlValue, VarLenType},
+    wire::{
+        BulkImport, ColumnAttribute, DataType, FixedLenType, IntoRowMessage, RowMessage, SqlValue,
+        VarLenType,
+    },
     xml,
 };
 pub use result::*;
