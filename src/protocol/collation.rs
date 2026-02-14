@@ -480,7 +480,7 @@ mod tests {
         assert!(sortid_to_encoding(50).is_some());
         assert!(sortid_to_encoding(192).is_some()); // Shift_JIS
         assert!(sortid_to_encoding(194).is_some()); // EUC-KR
-        assert!(sortid_to_encoding(0).is_none());   // Unknown
-        assert!(sortid_to_encoding(1).is_none());    // Unknown
+        assert!(sortid_to_encoding(0).is_none()); // Unknown
+        assert!(sortid_to_encoding(1).is_none()); // Unknown
     }
 }
