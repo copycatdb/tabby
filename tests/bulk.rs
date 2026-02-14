@@ -1,6 +1,6 @@
 mod common;
 
-use tabby::IntoSqlOwned;
+use tabby::IntoRowMessage;
 
 #[tokio::test]
 async fn bulk_insert_basic() {

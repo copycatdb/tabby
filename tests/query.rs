@@ -248,20 +248,22 @@ async fn execute_result_into_iter() {
 
 #[tokio::test]
 async fn query_object() {
-    use tabby::IntoSqlOwned;
-
     let mut client = common::connect().await;
     let mut query = tabby::Query::new("SELECT @P1 AS val");
     query.bind(42i32);
-    let stream = query.query(&mut client).await.unwrap();
-    let row = stream.into_row().await.unwrap().unwrap();
+    let row = query
+        .query(&mut client)
+        .await
+        .unwrap()
+        .into_row()
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(Some(42i32), row.get("val"));
 }
 
 #[tokio::test]
 async fn query_object_execute() {
-    use tabby::IntoSqlOwned;
-
     let mut client = common::connect().await;
     client
         .execute_raw("CREATE TABLE ##test_qoe (id INT)")

@@ -183,3 +183,132 @@ impl Config {
         format!("{}:{}", self.get_host(), self.get_port())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config() {
+        let config = Config::new();
+        assert_eq!("localhost", config.get_host());
+        assert_eq!(1433, config.get_port());
+        assert_eq!("localhost:1433", config.get_addr());
+    }
+
+    #[test]
+    fn custom_host_and_port() {
+        let mut config = Config::new();
+        config.host("myhost");
+        config.port(5000);
+        assert_eq!("myhost", config.get_host());
+        assert_eq!(5000, config.get_port());
+        assert_eq!("myhost:5000", config.get_addr());
+    }
+
+    #[test]
+    fn dot_host_becomes_localhost() {
+        let mut config = Config::new();
+        config.host(".");
+        assert_eq!("localhost", config.get_host());
+    }
+
+    #[test]
+    fn instance_name_uses_browser_port() {
+        let mut config = Config::new();
+        config.instance_name("INST");
+        assert_eq!(1434, config.get_port());
+    }
+
+    #[test]
+    fn explicit_port_overrides_instance_name() {
+        let mut config = Config::new();
+        config.instance_name("INST");
+        config.port(9999);
+        assert_eq!(9999, config.get_port());
+    }
+
+    #[test]
+    fn database_setting() {
+        let mut config = Config::new();
+        config.database("mydb");
+        assert_eq!(Some("mydb".to_string()), config.database);
+    }
+
+    #[test]
+    fn application_name_setting() {
+        let mut config = Config::new();
+        config.application_name("myapp");
+        assert_eq!(Some("myapp".to_string()), config.application_name);
+    }
+
+    #[test]
+    fn encryption_setting() {
+        let mut config = Config::new();
+        config.encryption(EncryptionLevel::NotSupported);
+        assert_eq!(EncryptionLevel::NotSupported, config.encryption);
+    }
+
+    #[test]
+    fn trust_cert_setting() {
+        let mut config = Config::new();
+        config.trust_cert();
+        assert!(matches!(config.trust, TrustConfig::TrustAll));
+    }
+
+    #[test]
+    fn trust_cert_ca_setting() {
+        let mut config = Config::new();
+        config.trust_cert_ca("/path/to/ca.pem");
+        assert!(matches!(
+            config.trust,
+            TrustConfig::CaCertificateLocation(_)
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "mutual exclusive")]
+    fn trust_cert_then_ca_panics() {
+        let mut config = Config::new();
+        config.trust_cert();
+        config.trust_cert_ca("/path/to/ca.pem");
+    }
+
+    #[test]
+    #[should_panic(expected = "mutual exclusive")]
+    fn trust_ca_then_cert_panics() {
+        let mut config = Config::new();
+        config.trust_cert_ca("/path/to/ca.pem");
+        config.trust_cert();
+    }
+
+    #[test]
+    fn readonly_setting() {
+        let mut config = Config::new();
+        config.readonly(true);
+        assert!(config.readonly);
+    }
+
+    #[test]
+    fn auth_sql_server() {
+        let mut config = Config::new();
+        config.authentication(AuthMethod::sql_server("user", "pass"));
+        assert!(matches!(config.auth, AuthMethod::SqlServer(_)));
+    }
+
+    #[test]
+    fn auth_aad_token() {
+        let mut config = Config::new();
+        config.authentication(AuthMethod::aad_token("my-token"));
+        assert!(matches!(config.auth, AuthMethod::AADToken(_)));
+    }
+
+    #[test]
+    fn config_clone() {
+        let mut config = Config::new();
+        config.host("test");
+        config.port(5555);
+        let cloned = config.clone();
+        assert_eq!("test:5555", cloned.get_addr());
+    }
+}

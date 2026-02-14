@@ -171,3 +171,99 @@ impl WireDecode<BytesMut> for PacketHeader {
         Ok(header)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::BytesMut;
+
+    #[test]
+    fn packet_header_new() {
+        let h = PacketHeader::new(100, 5);
+        assert_eq!(100, h.length());
+        assert_eq!(PacketStatus::ResetConnection, h.status());
+    }
+
+    #[test]
+    fn packet_header_rpc() {
+        let h = PacketHeader::rpc(1);
+        assert_eq!(PacketType::Rpc, h.r#type());
+        assert_eq!(PacketStatus::NormalMessage, h.status());
+    }
+
+    #[test]
+    fn packet_header_pre_login() {
+        let h = PacketHeader::pre_login(2);
+        assert_eq!(PacketType::PreLogin, h.r#type());
+        assert_eq!(PacketStatus::EndOfMessage, h.status());
+    }
+
+    #[test]
+    fn packet_header_login() {
+        let h = PacketHeader::login(3);
+        assert_eq!(PacketType::TDSv7Login, h.r#type());
+        assert_eq!(PacketStatus::EndOfMessage, h.status());
+    }
+
+    #[test]
+    fn packet_header_batch() {
+        let h = PacketHeader::batch(4);
+        assert_eq!(PacketType::SQLBatch, h.r#type());
+        assert_eq!(PacketStatus::NormalMessage, h.status());
+    }
+
+    #[test]
+    fn packet_header_bulk_import() {
+        let h = PacketHeader::bulk_import(5);
+        assert_eq!(PacketType::BulkLoad, h.r#type());
+        assert_eq!(PacketStatus::NormalMessage, h.status());
+    }
+
+    #[test]
+    fn packet_header_set_status_and_type() {
+        let mut h = PacketHeader::new(0, 0);
+        h.set_status(PacketStatus::EndOfMessage);
+        h.set_type(PacketType::Rpc);
+        assert_eq!(PacketStatus::EndOfMessage, h.status());
+        assert_eq!(PacketType::Rpc, h.r#type());
+    }
+
+    #[test]
+    fn packet_header_encode_decode_roundtrip() {
+        let original = PacketHeader::batch(42);
+        let mut buf = BytesMut::new();
+        original.encode(&mut buf).unwrap();
+        // Manually set length for decode
+        assert_eq!(8, buf.len());
+        let decoded = PacketHeader::decode(&mut buf).unwrap();
+        assert_eq!(original.r#type(), decoded.r#type());
+        assert_eq!(original.status(), decoded.status());
+    }
+
+    #[test]
+    fn packet_type_try_from_valid() {
+        assert_eq!(Ok(PacketType::SQLBatch), PacketType::try_from(1u8));
+        assert_eq!(Ok(PacketType::Rpc), PacketType::try_from(3u8));
+        assert_eq!(Ok(PacketType::TabularResult), PacketType::try_from(4u8));
+        assert_eq!(Ok(PacketType::PreLogin), PacketType::try_from(18u8));
+    }
+
+    #[test]
+    fn packet_type_try_from_invalid() {
+        assert!(PacketType::try_from(255u8).is_err());
+    }
+
+    #[test]
+    fn packet_status_try_from() {
+        assert_eq!(Ok(PacketStatus::NormalMessage), PacketStatus::try_from(0u8));
+        assert_eq!(Ok(PacketStatus::EndOfMessage), PacketStatus::try_from(1u8));
+        assert!(PacketStatus::try_from(255u8).is_err());
+    }
+
+    #[test]
+    fn decode_invalid_packet_type() {
+        let mut buf = BytesMut::from(&[255u8, 0, 0, 8, 0, 0, 0, 0][..]);
+        let result = PacketHeader::decode(&mut buf);
+        assert!(result.is_err());
+    }
+}
