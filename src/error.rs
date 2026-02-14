@@ -157,3 +157,119 @@ impl From<libgssapi::error::Error> for Error {
         Error::Gssapi(format!("{}", err))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_display_io() {
+        let err = Error::Io { kind: IoErrorKind::ConnectionRefused, message: "refused".into() };
+        assert!(format!("{}", err).contains("refused"));
+    }
+
+    #[test]
+    fn error_display_protocol() {
+        let err = Error::Protocol("bad protocol".into());
+        assert!(format!("{}", err).contains("bad protocol"));
+    }
+
+    #[test]
+    fn error_display_encoding() {
+        let err = Error::Encoding("bad enc".into());
+        assert!(format!("{}", err).contains("bad enc"));
+    }
+
+    #[test]
+    fn error_display_conversion() {
+        let err = Error::Conversion("bad conv".into());
+        assert!(format!("{}", err).contains("bad conv"));
+    }
+
+    #[test]
+    fn error_display_utf8() {
+        let err = Error::Utf8;
+        assert!(format!("{}", err).contains("UTF-8"));
+    }
+
+    #[test]
+    fn error_display_utf16() {
+        let err = Error::Utf16;
+        assert!(format!("{}", err).contains("UTF-16"));
+    }
+
+    #[test]
+    fn error_display_tls() {
+        let err = Error::Tls("tls error".into());
+        assert!(format!("{}", err).contains("tls error"));
+    }
+
+    #[test]
+    fn error_display_routing() {
+        let err = Error::Routing { host: "h".into(), port: 123 };
+        let s = format!("{}", err);
+        assert!(s.contains("h") && s.contains("123"));
+    }
+
+    #[test]
+    fn error_display_bulk_input() {
+        let err = Error::BulkInput("bad input".into());
+        assert!(format!("{}", err).contains("bad input"));
+    }
+
+    #[test]
+    fn error_code_none_for_non_server() {
+        assert_eq!(None, Error::Utf8.code());
+        assert!(!Error::Utf8.is_deadlock());
+    }
+
+    #[test]
+    fn error_from_io() {
+        let e: Error = io::Error::new(io::ErrorKind::NotFound, "missing").into();
+        assert!(matches!(e, Error::Io { .. }));
+    }
+
+    #[test]
+    fn error_from_parse_int() {
+        let e: Error = "abc".parse::<i32>().unwrap_err().into();
+        assert!(matches!(e, Error::ParseInt(_)));
+    }
+
+    #[test]
+    fn error_from_utf8_error() {
+        let e: Error = std::str::from_utf8(b"\xff").unwrap_err().into();
+        assert!(matches!(e, Error::Utf8));
+    }
+
+    #[test]
+    fn error_from_string_utf8() {
+        let e: Error = String::from_utf8(vec![0xff]).unwrap_err().into();
+        assert!(matches!(e, Error::Utf8));
+    }
+
+    #[test]
+    fn error_from_utf16_error() {
+        let e: Error = String::from_utf16(&[0xD800]).unwrap_err().into();
+        assert!(matches!(e, Error::Utf16));
+    }
+
+    #[test]
+    fn error_from_uuid() {
+        let e: Error = uuid::Uuid::parse_str("not-a-uuid").unwrap_err().into();
+        assert!(matches!(e, Error::Conversion(_)));
+    }
+
+    #[test]
+    fn error_clone_and_eq() {
+        let e1 = Error::Utf8;
+        let e2 = e1.clone();
+        assert_eq!(e1, e2);
+    }
+
+    #[test]
+    fn error_debug() {
+        let err = Error::Protocol("test".into());
+        let s = format!("{:?}", err);
+        assert!(s.contains("Protocol"));
+    }
+}

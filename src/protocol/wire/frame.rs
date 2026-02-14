@@ -55,3 +55,62 @@ impl<'a> Extend<&'a u8> for Frame {
         self.payload.extend(iter)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::wire::header::PacketType;
+    use bytes::BytesMut;
+
+    #[test]
+    fn frame_is_last() {
+        let h = PacketHeader::batch(0); // NormalMessage
+        let frame = Frame::new(h, BytesMut::new());
+        assert!(!frame.is_last());
+
+        let h2 = PacketHeader::pre_login(0); // EndOfMessage
+        let frame2 = Frame::new(h2, BytesMut::new());
+        assert!(frame2.is_last());
+    }
+
+    #[test]
+    fn frame_into_parts() {
+        let h = PacketHeader::batch(1);
+        let payload = BytesMut::from(&b"hello"[..]);
+        let frame = Frame::new(h, payload);
+        let (header, data) = frame.into_parts();
+        assert_eq!(PacketType::SQLBatch, header.r#type());
+        assert_eq!(&b"hello"[..], &data[..]);
+    }
+
+    #[test]
+    fn frame_extend_u8() {
+        let h = PacketHeader::batch(0);
+        let mut frame = Frame::new(h, BytesMut::new());
+        frame.extend(vec![1u8, 2, 3]);
+        assert_eq!(&[1, 2, 3], &frame.payload[..]);
+    }
+
+    #[test]
+    fn frame_extend_ref() {
+        let h = PacketHeader::batch(0);
+        let mut frame = Frame::new(h, BytesMut::new());
+        frame.extend(&[4u8, 5, 6]);
+        assert_eq!(&[4, 5, 6], &frame.payload[..]);
+    }
+
+    #[test]
+    fn frame_encode_decode_roundtrip() {
+        let h = PacketHeader::pre_login(1);
+        let payload = BytesMut::from(&b"test"[..]);
+        let frame = Frame::new(h, payload);
+
+        let mut buf = BytesMut::new();
+        frame.encode(&mut buf).unwrap();
+
+        // Decode: first 8 bytes are header, rest is payload
+        let decoded = Frame::decode(&mut buf).unwrap();
+        assert_eq!(PacketType::PreLogin, decoded.header.r#type());
+        assert_eq!(&b"test"[..], &decoded.payload[..]);
+    }
+}
