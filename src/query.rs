@@ -7,7 +7,38 @@ use crate::{
     protocol::{pipeline::TokenStream, wire::RpcProcId},
 };
 
-/// A query object with bind parameters.
+/// A dynamically parameterized query object.
+///
+/// Use `Query` when the number of parameters is not known at compile time.
+/// For static parameter lists, [`Client::execute`] and [`Client::run`] are
+/// simpler alternatives.
+///
+/// Parameters are referenced as `@P1`, `@P2`, … in the SQL string and bound
+/// via [`bind`](Self::bind).
+///
+/// # Example
+///
+/// ```no_run
+/// # use tabby::{AuthMethod, Client, Config, Query};
+/// # use tokio_util::compat::TokioAsyncWriteCompatExt;
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # let mut config = Config::new();
+/// # config.host("localhost");
+/// # config.authentication(AuthMethod::sql_server("sa", "password"));
+/// # config.trust_cert();
+/// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
+/// # tcp.set_nodelay(true)?;
+/// # let mut client = Client::connect(config, tcp.compat_write()).await?;
+/// let mut query = Query::new("SELECT @P1 AS a, @P2 AS b");
+/// query.bind(1i32);
+/// query.bind("hello");
+///
+/// let row = query.query(&mut client).await?.into_row().await?.unwrap();
+/// let a: i32 = row.get("a").unwrap();
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct Query<'a> {
     sql: Cow<'a, str>,
@@ -35,40 +66,9 @@ impl<'a> Query<'a> {
         self.params.push(param.into_sql());
     }
 
-    /// Executes SQL statements in the SQL Server, returning the number rows
-    /// affected. Useful for `INSERT`, `UPDATE` and `DELETE` statements. See
-    /// [`Client#execute`] for a simpler API if the parameters are statically
-    /// known.
+    /// Executes the query and returns an [`ExecuteResult`] with row counts.
     ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # use tabby::{Config, Query};
-    /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-    /// # use std::env;
-    /// # #[tokio::main]
-    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-    /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-    /// # );
-    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
-    /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
-    /// # tcp.set_nodelay(true)?;
-    /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-    /// let mut query = Query::new("INSERT INTO ##Test (id) VALUES (@P1), (@P2), (@P3)");
-    ///
-    /// query.bind("foo");
-    /// query.bind(2i32);
-    /// query.bind(String::from("bar"));
-    ///
-    /// let results = query.execute(&mut client).await?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// [`IntoSql`]: trait.IntoSql.html
-    /// [`FromServer`]: trait.FromServer.html
-    /// [`Client#execute`]: struct.Client.html#method.execute
+    /// See [`Client::run`] for the simpler static-parameter equivalent.
     pub async fn execute<S>(self, client: &mut Client<S>) -> crate::Result<ExecuteResult>
     where
         S: AsyncRead + AsyncWrite + Unpin + Send,
@@ -84,40 +84,9 @@ impl<'a> Query<'a> {
         ExecuteResult::new(&mut client.connection).await
     }
 
-    /// Executes SQL statements in the SQL Server, returning resulting rows.
-    /// Useful for `SELECT` statements. See [`Client#query`] for a simpler API
-    /// if the parameters are statically known.
+    /// Executes the query and returns a [`ResultStream`] for reading rows.
     ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # use tabby::{Config, Query};
-    /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-    /// # use std::env;
-    /// # #[tokio::main]
-    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-    /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-    /// # );
-    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
-    /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
-    /// # tcp.set_nodelay(true)?;
-    /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-    /// let mut query = Query::new("SELECT @P1, @P2, @P3");
-    ///
-    /// query.bind(1i32);
-    /// query.bind(2i32);
-    /// query.bind(3i32);
-    ///
-    /// let stream = query.execute(&mut client).await?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// [`ResultStream`]: struct.ResultStream.html
-    /// [`IntoSql`]: trait.IntoSql.html
-    /// [`FromServer`]: trait.FromServer.html
-    /// [`Client#query`]: struct.Client.html#method.query
+    /// See [`Client::execute`] for the simpler static-parameter equivalent.
     pub async fn query<'b, S>(self, client: &'b mut Client<S>) -> crate::Result<ResultStream<'b>>
     where
         S: AsyncRead + AsyncWrite + Unpin + Send,

@@ -6,41 +6,13 @@ use futures_util::io::{AsyncRead, AsyncWrite};
 use futures_util::stream::TryStreamExt;
 use std::fmt::Debug;
 
-/// A result from a query execution, listing the number of affected rows.
+/// The result of a DML execution, containing the number of rows affected.
 ///
-/// If executing multiple queries, the resulting counts will be come separately,
-/// marking the rows affected for each query.
+/// When executing multiple statements separated by `;`, each statement
+/// produces a separate count accessible via [`rows_affected`](Self::rows_affected).
+/// Use [`total`](Self::total) to get the sum.
 ///
-/// # Example
-///
-/// ```ignore
-/// # use tabby::Config;
-/// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-/// # use std::env;
-/// # #[tokio::main]
-/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-/// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-/// # );
-/// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
-/// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
-/// # tcp.set_nodelay(true)?;
-/// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-/// let result = client
-///     .execute(
-///         "INSERT INTO #Test (id) VALUES (@P1); INSERT INTO #Test (id) VALUES (@P2, @P3)",
-///         &[&1i32, &2i32, &3i32],
-///     )
-///     .await?;
-///
-/// assert_eq!(&[1, 2], result.rows_affected());
-/// # Ok(())
-/// # }
-/// ```
-///
-/// [`Client`]: struct.Client.html
-/// [`Rows`]: struct.Row.html
-/// [`next_resultset`]: #method.next_resultset
+/// Implements [`IntoIterator`] over the individual row counts.
 #[derive(Debug)]
 pub struct ExecuteResult {
     rows_affected: Vec<u64>,
@@ -74,31 +46,7 @@ impl<'a> ExecuteResult {
 
     /// Aggregates all resulting row counts into a sum.
     ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # use tabby::Config;
-    /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-    /// # use std::env;
-    /// # #[tokio::main]
-    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-    /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-    /// # );
-    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
-    /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
-    /// # tcp.set_nodelay(true)?;
-    /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-    /// let rows_affected = client
-    ///     .execute(
-    ///         "INSERT INTO #Test (id) VALUES (@P1); INSERT INTO #Test (id) VALUES (@P2, @P3)",
-    ///         &[&1i32, &2i32, &3i32],
-    ///     )
-    ///     .await?;
-    ///
-    /// assert_eq!(3, rows_affected.total());
-    /// # Ok(())
-    /// # }
+    /// Consumes the `ExecuteResult`.
     pub fn total(self) -> u64 {
         self.rows_affected.into_iter().sum()
     }

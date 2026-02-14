@@ -1,4 +1,65 @@
-//! TDS protocol implementation for Microsoft SQL Server (TDS 7.4).
+//! # tabby
+//!
+//! A pure Rust implementation of the TDS (Tabular Data Stream) 7.4+ protocol
+//! for Microsoft SQL Server.
+//!
+//! `tabby` provides an async client for connecting to SQL Server, executing
+//! queries with parameterized inputs, reading result rows, and performing bulk
+//! inserts — all without any C dependencies.
+//!
+//! # Quick Start
+//!
+//! ```no_run
+//! use tabby::{AuthMethod, Client, Config};
+//! use tokio_util::compat::TokioAsyncWriteCompatExt;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let mut config = Config::new();
+//!     config.host("localhost");
+//!     config.port(1433);
+//!     config.authentication(AuthMethod::sql_server("sa", "your_password"));
+//!     config.trust_cert();
+//!
+//!     let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
+//!     tcp.set_nodelay(true)?;
+//!
+//!     let mut client = Client::connect(config, tcp.compat_write()).await?;
+//!
+//!     // Execute a query and read rows
+//!     let stream = client.execute("SELECT @P1 AS greeting", &[&"hello"]).await?;
+//!     let row = stream.into_row().await?.unwrap();
+//!     let greeting: &str = row.get("greeting").unwrap();
+//!     println!("{greeting}");
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! # Key Types
+//!
+//! - [`Client`] — the main entry point for executing queries
+//! - [`Config`] — connection configuration builder
+//! - [`AuthMethod`] — authentication methods (SQL Server, Windows, AAD)
+//! - [`ResultStream`] — streaming query results
+//! - [`Row`] — a single result row with typed column access
+//! - [`Query`] — dynamic parameterized queries
+//! - [`IntoSql`] / [`FromServer`] — parameter and result type conversion traits
+//! - [`SqlValue`] — the underlying TDS value container
+//!
+//! # Feature Flags
+//!
+//! | Feature | Description |
+//! |---------|-------------|
+//! | `rustls` (default) | TLS via rustls |
+//! | `native-tls` | TLS via native-tls (OpenSSL/SChannel/SecureTransport) |
+//! | `vendored-openssl` | TLS via vendored OpenSSL |
+//! | `integrated-auth-gssapi` | Kerberos/GSSAPI integrated auth on Unix |
+//! | `winauth` | NTLM/SSPI integrated auth on Windows |
+//! | `chrono` | Date/time conversions with the `chrono` crate |
+//! | `time` | Date/time conversions with the `time` crate |
+//! | `rust_decimal` | Decimal conversions with `rust_decimal` |
+//! | `bigdecimal` | Decimal conversions with `bigdecimal` |
 #![allow(dead_code)]
 
 #[macro_use]
