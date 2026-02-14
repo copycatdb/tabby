@@ -4,12 +4,37 @@ use super::AuthMethod;
 use crate::EncryptionLevel;
 
 #[derive(Clone, Debug)]
-/// Configuration for connecting to a SQL Server instance.
+/// Connection configuration for SQL Server.
 ///
-/// Use the builder methods to construct a configuration, then pass it to
-/// [`Client`] to establish a connection.
+/// Use builder methods to set connection options, then pass the `Config` to
+/// [`Client::connect`].
 ///
-/// [`Client`]: struct.Client.html
+/// # Defaults
+///
+/// | Option | Default |
+/// |--------|---------|
+/// | Host | `localhost` |
+/// | Port | `1433` |
+/// | Database | `master` |
+/// | Encryption | `Required` (with TLS feature) / `NotSupported` (without) |
+/// | Authentication | `None` |
+/// | Readonly | `false` |
+///
+/// # Example
+///
+/// ```no_run
+/// use tabby::{AuthMethod, Config, EncryptionLevel};
+///
+/// let mut config = Config::new();
+/// config.host("db.example.com");
+/// config.port(1433);
+/// config.database("mydb");
+/// config.authentication(AuthMethod::sql_server("sa", "password"));
+/// config.encryption(EncryptionLevel::Required);
+/// config.trust_cert();
+/// ```
+///
+/// [`Client::connect`]: crate::Client::connect
 pub struct Config {
     pub(crate) host: Option<String>,
     pub(crate) port: Option<u16>,

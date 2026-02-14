@@ -15,23 +15,38 @@ pub enum DataLength {
     Max,
 }
 
-/// Describes a type of a column.
+/// Describes a column's TDS data type.
+///
+/// Corresponds to the type information sent by SQL Server in result metadata.
+/// You typically encounter this via [`Column::type_info`](crate::Column::type_info).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DataType {
+    /// A fixed-length type (e.g., `int`, `bit`, `float`, `datetime`).
     FixedLen(FixedLenType),
+    /// A variable-length type with size info (e.g., `nvarchar(100)`, `varbinary(max)`).
     VarLenSized(VarLenDescriptor),
+    /// A variable-length type with precision and scale (e.g., `numeric(18,2)`).
     VarLenSizedPrecision {
+        /// The variable-length type identifier.
         ty: VarLenType,
+        /// The storage size in bytes.
         size: usize,
+        /// The maximum number of digits.
         precision: u8,
+        /// The number of digits to the right of the decimal point.
         scale: u8,
     },
+    /// An XML data type, optionally with a schema collection.
     Xml {
+        /// The optional XML schema.
         schema: Option<Arc<XmlSchema>>,
+        /// The maximum size.
         size: usize,
     },
 }
 
+/// Metadata for a variable-length column type, including the TDS type tag,
+/// the maximum length, and optional collation info.
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct VarLenDescriptor {
     r#type: VarLenType,
