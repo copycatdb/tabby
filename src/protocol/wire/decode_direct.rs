@@ -343,8 +343,9 @@ async fn decode_datetime_into<R: ProtocolReader + Unpin>(
             let days = src.read_i32_le().await? as i64;
             let ticks = src.read_u32_le().await? as i64;
             let unix_days = days - SQL_TO_UNIX_DAYS;
-            // ticks * 1_000_000 / 300 = ticks * 10000 / 3
-            let micros = unix_days * MICROS_PER_DAY + ticks * 10_000 / 3;
+            // Match legacy precision: truncate to whole milliseconds first
+            let total_ms = ticks * 1000 / 300;
+            let micros = unix_days * MICROS_PER_DAY + total_ms * 1000;
             writer.write_datetime(col, micros);
         }
         _ => {
@@ -441,7 +442,8 @@ fn write_sqlvalue_into(
             let days = dt.days() as i64;
             let ticks = dt.seconds_fragments() as i64;
             let unix_days = days - SQL_TO_UNIX_DAYS;
-            let micros = unix_days * MICROS_PER_DAY + ticks * 10_000 / 3;
+            let total_ms = ticks * 1000 / 300;
+            let micros = unix_days * MICROS_PER_DAY + total_ms * 1000;
             writer.write_datetime(col, micros);
         }
         SqlValue::SmallDateTime(Some(dt)) => {
