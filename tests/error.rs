@@ -32,9 +32,10 @@ async fn nonexistent_table() {
 #[tokio::test]
 async fn connection_refused() {
     let mut config = Config::new();
-    config.host("localhost");
+    let (host, _port, user, password) = common::test_config();
+    config.host(&host);
     config.port(19999); // unlikely to be open
-    config.authentication(AuthMethod::sql_server("sa", "TestPass123!"));
+    config.authentication(AuthMethod::sql_server(&user, &password));
     config.trust_cert();
 
     let result = common::connect_with_config(config).await;
