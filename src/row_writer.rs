@@ -56,6 +56,16 @@ pub trait RowWriter {
     fn write_decimal(&mut self, col: usize, value: i128, precision: u8, scale: u8);
     /// GUID/UUID as raw 16 bytes (standard byte order, not TDS wire order).
     fn write_guid(&mut self, col: usize, bytes: &[u8; 16]);
+
+    /// Called when a new result set starts (new ColMetaData token).
+    /// Default implementation does nothing. Override to handle multi-result sets.
+    fn on_metadata(&mut self, _columns: &[crate::row::Column]) {}
+
+    /// Called after each row is fully decoded. Default does nothing.
+    fn on_row_done(&mut self) {}
+
+    /// Called when a SQL Server info/message is received (PRINT, RAISERROR with severity ≤ 10).
+    fn on_info(&mut self, _number: u32, _message: &str) {}
 }
 
 /// A `RowWriter` that collects values into a `Vec<SqlValue>`, preserving

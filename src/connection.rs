@@ -628,4 +628,267 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
 
         Ok(writer)
     }
+
+    /// Execute raw SQL and decode rows directly into a RowWriter, bypassing
+    /// SqlValue allocation entirely. Like [`query_direct`](Self::query_direct)
+    /// but for raw SQL batches (no parameterized query support).
+    ///
+    /// The `on_metadata` callback is invoked once per result set with the
+    /// column schema, returning a fresh writer. `on_row_done` is called after
+    /// each row is decoded. If `on_row_done` returns `false`, remaining rows
+    /// in the current result set are skipped.
+    ///
+    /// Returns the writer for the last result set, or `None` if the batch
+    /// produced no result sets.
+    pub async fn batch_direct<'a, 'b, W: crate::row_writer::RowWriter>(
+        &'a mut self,
+        query: impl Into<Cow<'b, str>>,
+        mut on_metadata: impl FnMut(&[Column]) -> W,
+        mut on_row_done: impl FnMut(&mut W) -> bool,
+    ) -> crate::Result<Option<W>>
+    where
+        'a: 'b,
+    {
+        self.connection.flush_stream().await?;
+
+        let req = RawQuery::new(query, self.connection.context().transaction_descriptor());
+        let id = self.connection.context_mut().next_packet_id();
+        self.connection.send(PacketHeader::batch(id), req).await?;
+
+        let mut writer: Option<W> = None;
+        let mut string_buf = String::with_capacity(4096);
+        let mut bytes_buf = Vec::with_capacity(4096);
+
+        loop {
+            if self.connection.is_eof() {
+                break;
+            }
+
+            let ty_byte = self.connection.read_u8().await?;
+            let ty = MessageKind::try_from(ty_byte).map_err(|_| {
+                crate::Error::Protocol(format!("invalid token type {:x}", ty_byte).into())
+            })?;
+
+            match ty {
+                MessageKind::ColMetaData => {
+                    let meta =
+                        std::sync::Arc::new(ColumnSchema::decode(&mut self.connection).await?);
+                    self.connection.context_mut().set_last_meta(meta.clone());
+
+                    let columns: Vec<Column> = meta
+                        .columns
+                        .iter()
+                        .map(|x| Column {
+                            name: x.col_name.to_string(),
+                            column_type: crate::row::ColumnType::from(&x.base.ty),
+                            type_info: Some(x.base.ty.clone()),
+                            nullable: Some(x.base.flags.contains(ColumnAttribute::Nullable)),
+                        })
+                        .collect();
+
+                    writer = Some(on_metadata(&columns));
+                }
+                MessageKind::Row => {
+                    if let Some(ref mut w) = writer {
+                        crate::protocol::wire::decode_direct::decode_row_into(
+                            &mut self.connection,
+                            w,
+                            &mut string_buf,
+                            &mut bytes_buf,
+                        )
+                        .await?;
+                        on_row_done(w);
+                    }
+                }
+                MessageKind::NbcRow => {
+                    if let Some(ref mut w) = writer {
+                        crate::protocol::wire::decode_direct::decode_nbc_row_into(
+                            &mut self.connection,
+                            w,
+                            &mut string_buf,
+                            &mut bytes_buf,
+                        )
+                        .await?;
+                        on_row_done(w);
+                    }
+                }
+                MessageKind::Done | MessageKind::DoneProc | MessageKind::DoneInProc => {
+                    let _done = CompletionMessage::decode(&mut self.connection).await?;
+                    if self.connection.is_eof() {
+                        break;
+                    }
+                }
+                MessageKind::ReturnStatus => {
+                    let _status = self.connection.read_u32_le().await?;
+                }
+                MessageKind::ReturnValue => {
+                    let _rv = ReturnValue::decode(&mut self.connection).await?;
+                }
+                MessageKind::Error => {
+                    let err = ServerError::decode(&mut self.connection).await?;
+                    return Err(crate::Error::Server(err));
+                }
+                MessageKind::Info => {
+                    let _info = ServerNotice::decode(&mut self.connection).await?;
+                }
+                MessageKind::EnvChange => {
+                    let change = SessionChange::decode(&mut self.connection).await?;
+                    match change {
+                        SessionChange::PacketSize(new_size, _) => {
+                            self.connection.context_mut().set_packet_size(new_size);
+                        }
+                        SessionChange::BeginTransaction(desc) => {
+                            self.connection
+                                .context_mut()
+                                .set_transaction_descriptor(desc);
+                        }
+                        SessionChange::CommitTransaction
+                        | SessionChange::RollbackTransaction
+                        | SessionChange::DefectTransaction => {
+                            self.connection
+                                .context_mut()
+                                .set_transaction_descriptor([0; 8]);
+                        }
+                        _ => (),
+                    }
+                }
+                MessageKind::Order => {
+                    let _order = OrderMessage::decode(&mut self.connection).await?;
+                }
+                _ => {
+                    return Err(crate::Error::Protocol(
+                        format!("unexpected token {:?} in batch_direct", ty).into(),
+                    ));
+                }
+            }
+        }
+
+        Ok(writer)
+    }
+
+    /// Execute raw SQL and decode rows directly into a single RowWriter.
+    /// Unlike `batch_direct`, this keeps ONE writer across all result sets,
+    /// calling `RowWriter::on_metadata` when a new result set starts and
+    /// `RowWriter::on_row_done` after each row. Ideal for multi-result-set
+    /// queries where you want to accumulate all results.
+    pub async fn batch_into<'a, 'b, W: crate::row_writer::RowWriter>(
+        &'a mut self,
+        query: impl Into<Cow<'b, str>>,
+        writer: &mut W,
+    ) -> crate::Result<()>
+    where
+        'a: 'b,
+    {
+        self.connection.flush_stream().await?;
+
+        let req = RawQuery::new(query, self.connection.context().transaction_descriptor());
+        let id = self.connection.context_mut().next_packet_id();
+        self.connection.send(PacketHeader::batch(id), req).await?;
+
+        let mut string_buf = String::with_capacity(4096);
+        let mut bytes_buf = Vec::with_capacity(4096);
+
+        loop {
+            if self.connection.is_eof() {
+                break;
+            }
+
+            let ty_byte = self.connection.read_u8().await?;
+            let ty = MessageKind::try_from(ty_byte).map_err(|_| {
+                crate::Error::Protocol(format!("invalid token type {:x}", ty_byte).into())
+            })?;
+
+            match ty {
+                MessageKind::ColMetaData => {
+                    let meta =
+                        std::sync::Arc::new(ColumnSchema::decode(&mut self.connection).await?);
+                    self.connection.context_mut().set_last_meta(meta.clone());
+
+                    let columns: Vec<Column> = meta
+                        .columns
+                        .iter()
+                        .map(|x| Column {
+                            name: x.col_name.to_string(),
+                            column_type: crate::row::ColumnType::from(&x.base.ty),
+                            type_info: Some(x.base.ty.clone()),
+                            nullable: Some(x.base.flags.contains(ColumnAttribute::Nullable)),
+                        })
+                        .collect();
+
+                    writer.on_metadata(&columns);
+                }
+                MessageKind::Row => {
+                    crate::protocol::wire::decode_direct::decode_row_into(
+                        &mut self.connection,
+                        writer,
+                        &mut string_buf,
+                        &mut bytes_buf,
+                    )
+                    .await?;
+                    writer.on_row_done();
+                }
+                MessageKind::NbcRow => {
+                    crate::protocol::wire::decode_direct::decode_nbc_row_into(
+                        &mut self.connection,
+                        writer,
+                        &mut string_buf,
+                        &mut bytes_buf,
+                    )
+                    .await?;
+                    writer.on_row_done();
+                }
+                MessageKind::Done | MessageKind::DoneProc | MessageKind::DoneInProc => {
+                    let _done = CompletionMessage::decode(&mut self.connection).await?;
+                    if self.connection.is_eof() {
+                        break;
+                    }
+                }
+                MessageKind::ReturnStatus => {
+                    let _status = self.connection.read_u32_le().await?;
+                }
+                MessageKind::ReturnValue => {
+                    let _rv = ReturnValue::decode(&mut self.connection).await?;
+                }
+                MessageKind::Error => {
+                    let err = ServerError::decode(&mut self.connection).await?;
+                    return Err(crate::Error::Server(err));
+                }
+                MessageKind::Info => {
+                    let info = ServerNotice::decode(&mut self.connection).await?;
+                    writer.on_info(info.number, &info.message);
+                }
+                MessageKind::EnvChange => {
+                    let change = SessionChange::decode(&mut self.connection).await?;
+                    match change {
+                        SessionChange::PacketSize(new_size, _) => {
+                            self.connection.context_mut().set_packet_size(new_size);
+                        }
+                        SessionChange::BeginTransaction(desc) => {
+                            self.connection
+                                .context_mut()
+                                .set_transaction_descriptor(desc);
+                        }
+                        SessionChange::CommitTransaction
+                        | SessionChange::RollbackTransaction
+                        | SessionChange::DefectTransaction => {
+                            self.connection
+                                .context_mut()
+                                .set_transaction_descriptor([0; 8]);
+                        }
+                        _ => (),
+                    }
+                }
+                MessageKind::Order => {
+                    let _order = OrderMessage::decode(&mut self.connection).await?;
+                }
+                _ => {
+                    return Err(crate::Error::Protocol(
+                        format!("unexpected token {:?} in batch_into", ty).into(),
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
 }

@@ -276,8 +276,8 @@ async fn decode_varlen_into<R: ProtocolReader + Unpin>(
                 _ => {
                     let dto = crate::temporal::DateTimeOffset::decode(src, len, rlen - 5).await?;
                     let micros = datetime2_to_micros(&dto.datetime2());
-                    let offset_micros = dto.offset() as i64 * 60 * 1_000_000;
-                    writer.write_datetimeoffset(col, micros - offset_micros, dto.offset());
+                    // datetime2 part is already UTC per TDS spec, no offset subtraction needed
+                    writer.write_datetimeoffset(col, micros, dto.offset());
                 }
             }
         }
@@ -482,8 +482,8 @@ fn write_sqlvalue_into(
         }
         SqlValue::DateTimeOffset(Some(dto)) => {
             let micros = datetime2_to_micros(&dto.datetime2());
-            let offset_micros = dto.offset() as i64 * 60 * 1_000_000;
-            writer.write_datetimeoffset(col, micros - offset_micros, dto.offset());
+            // datetime2 part is already UTC per TDS spec
+            writer.write_datetimeoffset(col, micros, dto.offset());
         }
     }
 }
