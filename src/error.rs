@@ -164,7 +164,10 @@ mod tests {
 
     #[test]
     fn error_display_io() {
-        let err = Error::Io { kind: IoErrorKind::ConnectionRefused, message: "refused".into() };
+        let err = Error::Io {
+            kind: IoErrorKind::ConnectionRefused,
+            message: "refused".into(),
+        };
         assert!(format!("{}", err).contains("refused"));
     }
 
@@ -206,7 +209,10 @@ mod tests {
 
     #[test]
     fn error_display_routing() {
-        let err = Error::Routing { host: "h".into(), port: 123 };
+        let err = Error::Routing {
+            host: "h".into(),
+            port: 123,
+        };
         let s = format!("{}", err);
         assert!(s.contains("h") && s.contains("123"));
     }

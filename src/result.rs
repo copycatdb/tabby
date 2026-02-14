@@ -1,4 +1,3 @@
-pub use crate::protocol::pipeline::ResultItem;
 use crate::{
     connection::Connection,
     protocol::pipeline::{ServerMessage, TokenStream},
