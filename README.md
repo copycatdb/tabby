@@ -35,12 +35,12 @@ tabby is primarily consumed by other CopyCat projects:
 | [**pounce**](https://github.com/copycatdb/pounce) | Arrow-native ADBC driver (Python) |
 | [**hiss**](https://github.com/copycatdb/hiss) | Async Python driver |
 | [**whiskers**](https://github.com/copycatdb/whiskers) | DB-API 2.0 Python driver |
-| [**scratch**](https://github.com/copycatdb/scratch) | Idiomatic Rust API |
+| [**claw**](https://github.com/copycatdb/claw) | Idiomatic Rust API |
 | [**furball**](https://github.com/copycatdb/furball) | ODBC driver |
-| [**yarn**](https://github.com/copycatdb/yarn) | Node.js driver |
+| [**kibble**](https://github.com/copycatdb/kibble) | Node.js driver |
 | [**catnip**](https://github.com/copycatdb/catnip) | Go driver |
 | [**hairball**](https://github.com/copycatdb/hairball) | JDBC driver |
-| [**purr**](https://github.com/copycatdb/purr) | .NET ADO.NET driver |
+| [**nuzzle**](https://github.com/copycatdb/nuzzle) | .NET ADO.NET driver |
 
 ```toml
 # Cargo.toml
