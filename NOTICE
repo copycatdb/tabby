@@ -1,0 +1,8 @@
+This project's TDS protocol implementation is inspired by and derived from
+tiberius (https://github.com/prisma/tiberius), a TDS driver for Rust by the
+Prisma team, licensed under the MIT License.
+
+Additional inspiration from:
+- FreeTDS (https://www.freetds.org/) — open-source TDS implementation since 1998
+- Microsoft TDS specification (MS-TDS)
+- Microsoft.Data.SqlClient (https://github.com/dotnet/SqlClient)
