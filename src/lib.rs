@@ -60,6 +60,17 @@ pub use result::ExecuteResult;
 pub use row::{Column, ColumnType};
 pub use row_writer::RowWriter;
 
+// Hidden re-exports for integration tests and backward compatibility.
+// Users should prefer the `claw` crate for these types.
+#[doc(hidden)]
+pub use connection::Client;
+#[doc(hidden)]
+pub use protocol::pipeline::{ResultItem, ResultStream};
+#[doc(hidden)]
+pub use protocol::wire::SqlValue;
+#[doc(hidden)]
+pub use query::Query;
+
 use protocol::reader::*;
 use protocol::wire::*;
 
