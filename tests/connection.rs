@@ -1,6 +1,6 @@
 mod common;
 
-use tabby::{AuthMethod, Config};
+use tabby::AuthMethod;
 
 #[tokio::test]
 async fn basic_connection() {
@@ -19,11 +19,7 @@ async fn basic_connection() {
 
 #[tokio::test]
 async fn connection_to_specific_database() {
-    let mut config = Config::new();
-    config.host("localhost");
-    config.port(1433);
-    config.authentication(AuthMethod::sql_server("sa", "TestPass123!"));
-    config.trust_cert();
+    let mut config = common::base_config();
     config.database("master");
 
     let mut client = common::connect_with_config(config).await.unwrap();
@@ -41,11 +37,7 @@ async fn connection_to_specific_database() {
 
 #[tokio::test]
 async fn connection_with_application_name() {
-    let mut config = Config::new();
-    config.host("localhost");
-    config.port(1433);
-    config.authentication(AuthMethod::sql_server("sa", "TestPass123!"));
-    config.trust_cert();
+    let mut config = common::base_config();
     config.application_name("tabby-test-app");
 
     let mut client = common::connect_with_config(config).await.unwrap();
@@ -63,9 +55,10 @@ async fn connection_with_application_name() {
 
 #[tokio::test]
 async fn auth_failure_wrong_password() {
-    let mut config = Config::new();
-    config.host("localhost");
-    config.port(1433);
+    let (host, port, _, _) = common::test_config();
+    let mut config = tabby::Config::new();
+    config.host(&host);
+    config.port(port);
     config.authentication(AuthMethod::sql_server("sa", "WrongPassword!"));
     config.trust_cert();
 
@@ -75,10 +68,11 @@ async fn auth_failure_wrong_password() {
 
 #[tokio::test]
 async fn auth_failure_wrong_user() {
-    let mut config = Config::new();
-    config.host("localhost");
-    config.port(1433);
-    config.authentication(AuthMethod::sql_server("nonexistent_user", "TestPass123!"));
+    let (host, port, _, _) = common::test_config();
+    let mut config = tabby::Config::new();
+    config.host(&host);
+    config.port(port);
+    config.authentication(AuthMethod::sql_server("nonexistent_user", "DoesntMatter!"));
     config.trust_cert();
 
     let result = common::connect_with_config(config).await;
@@ -87,13 +81,13 @@ async fn auth_failure_wrong_user() {
 
 #[tokio::test]
 async fn config_builder_defaults() {
-    let config = Config::new();
+    let config = tabby::Config::new();
     assert_eq!("localhost:1433", config.get_addr());
 }
 
 #[tokio::test]
 async fn config_builder_custom() {
-    let mut config = Config::new();
+    let mut config = tabby::Config::new();
     config.host("myserver");
     config.port(5555);
     assert_eq!("myserver:5555", config.get_addr());
@@ -101,15 +95,14 @@ async fn config_builder_custom() {
 
 #[tokio::test]
 async fn config_instance_name_uses_browser_port() {
-    let mut config = Config::new();
+    let mut config = tabby::Config::new();
     config.instance_name("MYINSTANCE");
-    // When instance_name is set and no port, defaults to 1434
     assert_eq!("localhost:1434", config.get_addr());
 }
 
 #[tokio::test]
 async fn config_port_overrides_instance_name() {
-    let mut config = Config::new();
+    let mut config = tabby::Config::new();
     config.instance_name("MYINSTANCE");
     config.port(9999);
     assert_eq!("localhost:9999", config.get_addr());
@@ -117,21 +110,16 @@ async fn config_port_overrides_instance_name() {
 
 #[tokio::test]
 async fn config_dot_host_becomes_localhost() {
-    let mut config = Config::new();
+    let mut config = tabby::Config::new();
     config.host(".");
     assert_eq!("localhost:1433", config.get_addr());
 }
 
 #[tokio::test]
 async fn readonly_config() {
-    let mut config = Config::new();
+    let mut config = common::base_config();
     config.readonly(true);
-    config.host("localhost");
-    config.port(1433);
-    config.authentication(AuthMethod::sql_server("sa", "TestPass123!"));
-    config.trust_cert();
 
-    // Should connect fine
     let mut client = common::connect_with_config(config).await.unwrap();
     let row = client
         .execute_raw("SELECT 1 AS val")
