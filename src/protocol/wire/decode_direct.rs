@@ -284,20 +284,17 @@ async fn decode_varlen_into<R: ProtocolReader + Unpin>(
         VarLenType::Text => {
             // Legacy text type — rare, fallback to SqlValue
             let val =
-                crate::protocol::wire::SqlValue::decode(src, &DataType::VarLenSized(*vlc))
-                    .await?;
+                crate::protocol::wire::SqlValue::decode(src, &DataType::VarLenSized(*vlc)).await?;
             write_sqlvalue_into(col, &val, writer);
         }
         VarLenType::NText => {
             let val =
-                crate::protocol::wire::SqlValue::decode(src, &DataType::VarLenSized(*vlc))
-                    .await?;
+                crate::protocol::wire::SqlValue::decode(src, &DataType::VarLenSized(*vlc)).await?;
             write_sqlvalue_into(col, &val, writer);
         }
         VarLenType::Image => {
             let val =
-                crate::protocol::wire::SqlValue::decode(src, &DataType::VarLenSized(*vlc))
-                    .await?;
+                crate::protocol::wire::SqlValue::decode(src, &DataType::VarLenSized(*vlc)).await?;
             write_sqlvalue_into(col, &val, writer);
         }
         t => unimplemented!("{:?}", t),
