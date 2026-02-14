@@ -114,8 +114,8 @@ async fn error_from_parse_int() {
 
 #[tokio::test]
 async fn error_from_utf8() {
-    let bytes: &[u8] = &[0xFF];
-    let utf8_err = std::str::from_utf8(bytes).unwrap_err();
+    let bytes = vec![0xFFu8];
+    let utf8_err = std::str::from_utf8(&bytes).unwrap_err();
     let err: tabby::error::Error = utf8_err.into();
     assert!(matches!(err, tabby::error::Error::Utf8));
 }
