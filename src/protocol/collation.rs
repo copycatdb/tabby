@@ -417,3 +417,70 @@ mod tests {
     }
 }
 */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collation_new() {
+        let c = Collation::new(0x0409, 0);
+        assert_eq!(0x0409, c.lcid());
+        assert_eq!(0, c.sort_id());
+        assert_eq!(0x0409, c.info());
+    }
+
+    #[test]
+    fn collation_encoding_by_lcid() {
+        let c = Collation::new(0x0409, 0); // US English -> Windows-1252
+        let enc = c.encoding().unwrap();
+        assert_eq!("windows-1252", enc.name());
+    }
+
+    #[test]
+    fn collation_encoding_by_sort_id() {
+        let c = Collation::new(0, 50); // sort_id 50 -> Windows-1252
+        let enc = c.encoding().unwrap();
+        assert_eq!("windows-1252", enc.name());
+    }
+
+    #[test]
+    fn collation_encoding_unsupported() {
+        let c = Collation::new(0xFFFF, 0); // Unknown LCID
+        assert!(c.encoding().is_err());
+    }
+
+    #[test]
+    fn collation_display_known() {
+        let c = Collation::new(0x0409, 0);
+        let s = format!("{}", c);
+        assert_eq!("windows-1252", s);
+    }
+
+    #[test]
+    fn collation_display_unknown() {
+        let c = Collation::new(0xFFFF, 0);
+        let s = format!("{}", c);
+        assert_eq!("None", s);
+    }
+
+    #[test]
+    fn lcid_to_encoding_various() {
+        assert!(lcid_to_encoding(0x0411).is_some()); // Japanese -> Shift_JIS
+        assert!(lcid_to_encoding(0x0412).is_some()); // Korean -> EUC-KR
+        assert!(lcid_to_encoding(0x0804).is_some()); // Chinese -> GB18030
+        assert!(lcid_to_encoding(0x0404).is_some()); // Chinese Traditional -> Big5
+        assert!(lcid_to_encoding(0x0401).is_some()); // Arabic -> Windows-1256
+        assert!(lcid_to_encoding(0x0419).is_some()); // Russian -> Windows-1251
+        assert!(lcid_to_encoding(0x0000).is_none()); // Unknown
+    }
+
+    #[test]
+    fn sortid_to_encoding_various() {
+        assert!(sortid_to_encoding(50).is_some());
+        assert!(sortid_to_encoding(192).is_some()); // Shift_JIS
+        assert!(sortid_to_encoding(194).is_some()); // EUC-KR
+        assert!(sortid_to_encoding(0).is_none());   // Unknown
+        assert!(sortid_to_encoding(1).is_none());    // Unknown
+    }
+}

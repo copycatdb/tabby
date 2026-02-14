@@ -24,7 +24,7 @@ pub use into_sql::{IntoSql, IntoSqlOwned};
 pub use protocol::{
     EncryptionLevel,
     numeric::Numeric,
-    pipeline::{ResultItem, ResultStream},
+    pipeline::ResultStream,
     temporal,
     wire::{
         BulkImport, ColumnAttribute, DataType, FixedLenType, IntoRowMessage, RowMessage, SqlValue,
