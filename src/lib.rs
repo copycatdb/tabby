@@ -41,8 +41,6 @@ pub mod result;
 pub mod row;
 pub mod row_writer;
 
-mod discovery;
-
 // ── Public API: wire-protocol types only ─────────────────────────────
 
 pub use connection::{AuthMethod, Config};
