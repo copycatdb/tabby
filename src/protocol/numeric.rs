@@ -411,3 +411,89 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod extra_tests {
+    use super::*;
+
+    #[test]
+    fn numeric_scale_and_value() {
+        let n = Numeric::new_with_scale(12345, 3);
+        assert_eq!(3, n.scale());
+        assert_eq!(12345, n.value());
+    }
+
+    #[test]
+    fn numeric_len() {
+        let n = Numeric::new_with_scale(0, 0);
+        assert!(n.len() > 0);
+    }
+
+    #[test]
+    fn numeric_display_positive() {
+        let n = Numeric::new_with_scale(12345, 2);
+        assert_eq!("123.45", format!("{}", n));
+    }
+
+    #[test]
+    fn numeric_display_negative() {
+        let n = Numeric::new_with_scale(-12345, 2);
+        assert_eq!("-123.45", format!("{}", n));
+    }
+
+    #[test]
+    fn numeric_display_zero_scale() {
+        let n = Numeric::new_with_scale(42, 0);
+        assert_eq!("42", format!("{}", n));
+    }
+
+    #[test]
+    fn numeric_debug() {
+        let n = Numeric::new_with_scale(100, 2);
+        let s = format!("{:?}", n);
+        assert!(s.contains("1.00"));
+    }
+
+    #[test]
+    fn numeric_clone_copy() {
+        let n = Numeric::new_with_scale(100, 1);
+        let n2 = n;
+        assert_eq!(n, n2);
+    }
+
+    #[test]
+    fn numeric_f64_conversion() {
+        let n = Numeric::new_with_scale(314, 2);
+        let f: f64 = n.into();
+        assert!((f - 3.14).abs() < 0.001);
+    }
+
+    #[test]
+    #[should_panic]
+    fn numeric_scale_too_large() {
+        Numeric::new_with_scale(1, 38);
+    }
+
+    #[test]
+    fn numeric_precision_various() {
+        assert_eq!(1, Numeric::new_with_scale(0, 0).precision());
+        assert_eq!(1, Numeric::new_with_scale(1, 0).precision());
+        assert_eq!(3, Numeric::new_with_scale(100, 0).precision());
+        assert_eq!(5, Numeric::new_with_scale(10000, 2).precision());
+    }
+
+    #[test]
+    fn numeric_eq_different_scales() {
+        // 1.0 == 1.00
+        let a = Numeric::new_with_scale(10, 1);
+        let b = Numeric::new_with_scale(100, 2);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn numeric_neq() {
+        let a = Numeric::new_with_scale(10, 1);
+        let b = Numeric::new_with_scale(20, 1);
+        assert_ne!(a, b);
+    }
+}

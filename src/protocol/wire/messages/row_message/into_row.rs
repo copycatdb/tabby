@@ -205,3 +205,74 @@ where
         row
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn single_element_row() {
+        let row = 42i32.into_row();
+        assert_eq!(1, row.len());
+    }
+
+    #[test]
+    fn two_element_row() {
+        let row = (1i32, "hello").into_row();
+        assert_eq!(2, row.len());
+    }
+
+    #[test]
+    fn three_element_row() {
+        let row = (1i32, 2i64, true).into_row();
+        assert_eq!(3, row.len());
+    }
+
+    #[test]
+    fn four_element_row() {
+        let row = (1i32, 2i32, 3i32, 4i32).into_row();
+        assert_eq!(4, row.len());
+    }
+
+    #[test]
+    fn five_element_row() {
+        let row = (1i32, 2i32, 3i32, 4i32, 5i32).into_row();
+        assert_eq!(5, row.len());
+    }
+
+    #[test]
+    fn six_element_row() {
+        let row = (1i32, 2i32, 3i32, 4i32, 5i32, 6i32).into_row();
+        assert_eq!(6, row.len());
+    }
+
+    #[test]
+    fn seven_element_row() {
+        let row = (1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32).into_row();
+        assert_eq!(7, row.len());
+    }
+
+    #[test]
+    fn eight_element_row() {
+        let row = (1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32).into_row();
+        assert_eq!(8, row.len());
+    }
+
+    #[test]
+    fn nine_element_row() {
+        let row = (1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32, 9i32).into_row();
+        assert_eq!(9, row.len());
+    }
+
+    #[test]
+    fn ten_element_row() {
+        let row = (1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32, 9i32, 10i32).into_row();
+        assert_eq!(10, row.len());
+    }
+
+    #[test]
+    fn mixed_types_row() {
+        let row = (42i32, "hello", true, 3.14f64).into_row();
+        assert_eq!(4, row.len());
+    }
+}

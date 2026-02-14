@@ -104,3 +104,61 @@ impl AuthMethod {
         Self::AADToken(token.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sql_server_auth() {
+        let auth = AuthMethod::sql_server("user", "pass");
+        match &auth {
+            AuthMethod::SqlServer(sa) => {
+                assert_eq!("user", sa.user());
+                assert_eq!("pass", sa.password());
+            }
+            _ => panic!("Expected SqlServer"),
+        }
+    }
+
+    #[test]
+    fn sql_server_auth_debug_hides_password() {
+        let auth = SqlServerAuth {
+            user: "sa".into(),
+            password: "secret".into(),
+        };
+        let dbg = format!("{:?}", auth);
+        assert!(dbg.contains("sa"));
+        assert!(dbg.contains("<HIDDEN>"));
+        assert!(!dbg.contains("secret"));
+    }
+
+    #[test]
+    fn sql_server_auth_clone_eq() {
+        let a1 = AuthMethod::sql_server("u", "p");
+        let a2 = a1.clone();
+        assert_eq!(a1, a2);
+    }
+
+    #[test]
+    fn aad_token_auth() {
+        let auth = AuthMethod::aad_token("my-token");
+        match auth {
+            AuthMethod::AADToken(t) => assert_eq!("my-token", t),
+            _ => panic!("Expected AADToken"),
+        }
+    }
+
+    #[test]
+    fn auth_none() {
+        let auth = AuthMethod::None;
+        assert_eq!(AuthMethod::None, auth);
+    }
+
+    #[test]
+    fn auth_method_debug() {
+        let auth = AuthMethod::sql_server("user", "pass");
+        let dbg = format!("{:?}", auth);
+        assert!(dbg.contains("SqlServer"));
+    }
+}

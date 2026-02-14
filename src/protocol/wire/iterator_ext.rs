@@ -25,3 +25,29 @@ where
         out
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn join_empty() {
+        let v: Vec<String> = vec![];
+        assert_eq!("", v.into_iter().join(", "));
+    }
+
+    #[test]
+    fn join_single() {
+        assert_eq!("hello", vec!["hello"].into_iter().join(", "));
+    }
+
+    #[test]
+    fn join_multiple() {
+        assert_eq!("a, b, c", vec!["a", "b", "c"].into_iter().join(", "));
+    }
+
+    #[test]
+    fn join_numbers() {
+        assert_eq!("1-2-3", vec![1, 2, 3].into_iter().join("-"));
+    }
+}
