@@ -5,7 +5,10 @@ use crate::{
 };
 use std::{fmt::Display, sync::Arc};
 
-/// A column of data from a query.
+/// A column of data from a query result.
+///
+/// Provides the column name, its [`ColumnType`], optional detailed
+/// [`DataType`](crate::DataType) information, and nullability.
 #[derive(Debug, Clone)]
 pub struct Column {
     pub(crate) name: String,
@@ -47,7 +50,10 @@ impl Column {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// The type of the column.
+/// The high-level SQL Server column type.
+///
+/// This is a simplified view of the underlying TDS data type. For full
+/// details (precision, scale, collation), see [`Column::type_info`].
 pub enum ColumnType {
     /// The column doesn't have a specified type.
     Null,
@@ -205,55 +211,46 @@ impl From<&DataType> for ColumnType {
     }
 }
 
-/// A row of data from a query.
+/// A single row of data returned from a query.
 ///
-/// Data can be accessed either by copying through [`get`] or [`try_get`]
-/// methods, or moving by value using the [`IntoIterator`] implementation.
+/// Access column values by name or zero-based index using [`get`](Self::get)
+/// (panics on error) or [`try_get`](Self::try_get) (returns `Result`).
+/// Nullable columns should be read as `Option<T>`.
 ///
-/// ```ignore
-/// # use tabby::{Config, FromServerOwned};
+/// The row also implements [`IntoIterator`], yielding owned [`SqlValue`]s.
+///
+/// # Example
+///
+/// ```no_run
+/// # use tabby::{AuthMethod, Client, Config};
 /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-/// # use std::env;
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-/// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-/// # );
-/// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
+/// # let mut config = Config::new();
+/// # config.host("localhost");
+/// # config.authentication(AuthMethod::sql_server("sa", "password"));
+/// # config.trust_cert();
 /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
 /// # tcp.set_nodelay(true)?;
-/// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-/// // by-reference
+/// # let mut client = Client::connect(config, tcp.compat_write()).await?;
 /// let row = client
-///     .execute("SELECT @P1 AS col1", &[&"test"])
+///     .execute("SELECT @P1 AS id, @P2 AS name", &[&1i32, &"Alice"])
 ///     .await?
 ///     .into_row()
 ///     .await?
 ///     .unwrap();
 ///
-/// assert_eq!(Some("test"), row.get("col1"));
+/// // By name
+/// let name: &str = row.get("name").unwrap();
 ///
-/// // ...or by-value
-/// let row = client
-///     .execute("SELECT @P1 AS col1", &[&"test"])
-///     .await?
-///     .into_row()
-///     .await?
-///     .unwrap();
+/// // By index
+/// let id: i32 = row.get(0).unwrap();
 ///
-/// for val in row.into_iter() {
-///     assert_eq!(
-///         Some(String::from("test")),
-///         String::from_sql_owned(val)?
-///     )
-/// }
+/// // Nullable column — get already returns Option
+/// let maybe: Option<&str> = row.get("name");
 /// # Ok(())
 /// # }
 /// ```
-///
-/// [`get`]: #method.get
-/// [`try_get`]: #method.try_get
-/// [`IntoIterator`]: #impl-IntoIterator
 #[derive(Debug)]
 pub struct Row {
     pub(crate) columns: Arc<Vec<Column>>,
@@ -283,34 +280,6 @@ impl QueryIdx for &str {
 impl Row {
     /// Columns defining the row data. Columns listed here are in the same order
     /// as the resulting data.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # use tabby::Config;
-    /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-    /// # use std::env;
-    /// # #[tokio::main]
-    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-    /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-    /// # );
-    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
-    /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
-    /// # tcp.set_nodelay(true)?;
-    /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-    /// let row = client
-    ///     .execute("SELECT 1 AS foo, 2 AS bar", &[])
-    ///     .await?
-    ///     .into_row()
-    ///     .await?
-    ///     .unwrap();
-    ///
-    /// assert_eq!("foo", row.columns()[0].name());
-    /// assert_eq!("bar", row.columns()[1].name());
-    /// # Ok(())
-    /// # }
-    /// ```
     pub fn columns(&self) -> &[Column] {
         &self.columns
     }
@@ -327,77 +296,23 @@ impl Row {
     }
 
     /// Returns the number of columns in the row.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # use tabby::Config;
-    /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-    /// # use std::env;
-    /// # #[tokio::main]
-    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-    /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-    /// # );
-    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
-    /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
-    /// # tcp.set_nodelay(true)?;
-    /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-    /// let row = client
-    ///     .execute("SELECT 1, 2", &[])
-    ///     .await?
-    ///     .into_row()
-    ///     .await?
-    ///     .unwrap();
-    ///
-    /// assert_eq!(2, row.len());
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[allow(clippy::len_without_is_empty)]
+    /// Returns the number of columns in the row.
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
-    /// Retrieve a column value for a given column index, which can either be
-    /// the zero-indexed position or the name of the column.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # use tabby::Config;
-    /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
-    /// # use std::env;
-    /// # #[tokio::main]
-    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
-    /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
-    /// # );
-    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
-    /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
-    /// # tcp.set_nodelay(true)?;
-    /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
-    /// let row = client
-    ///     .execute("SELECT @P1 AS col1", &[&1i32])
-    ///     .await?
-    ///     .into_row()
-    ///     .await?
-    ///     .unwrap();
-    ///
-    /// assert_eq!(Some(1i32), row.get(0));
-    /// assert_eq!(Some(1i32), row.get("col1"));
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// Returns `true` if the row has no columns.
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    /// Retrieve a column value by index (zero-based `usize`) or by column name
+    /// (`&str`). Returns `Some(value)` or `None` for SQL `NULL`.
     ///
     /// # Panics
     ///
-    /// - The requested type conversion (SQL->Rust) is not possible.
-    /// - The given index is out of bounds (column does not exist).
-    ///
-    /// Use [`try_get`] for a non-panicking version of the function.
-    ///
-    /// [`try_get`]: #method.try_get
+    /// Panics if the column does not exist or the type conversion fails.
+    /// Use [`try_get`](Self::try_get) for a non-panicking alternative.
     #[track_caller]
     pub fn get<'a, R, I>(&'a self, idx: I) -> Option<R>
     where

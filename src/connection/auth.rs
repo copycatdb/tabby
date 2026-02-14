@@ -47,16 +47,33 @@ impl Debug for WindowsAuth {
 }
 
 /// Defines the method of authentication to the server.
+///
+/// Use the constructor methods ([`sql_server`](Self::sql_server),
+/// [`windows`](Self::windows), [`aad_token`](Self::aad_token)) to create
+/// instances, then pass to [`Config::authentication`].
+///
+/// # Example
+///
+/// ```
+/// use tabby::AuthMethod;
+///
+/// // SQL Server authentication
+/// let auth = AuthMethod::sql_server("sa", "my_password");
+///
+/// // Azure AD token authentication
+/// let auth = AuthMethod::aad_token("eyJ0eXAi...");
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AuthMethod {
-    /// Authenticate directly with SQL Server.
+    /// Authenticate with SQL Server credentials (username + password).
     SqlServer(SqlServerAuth),
-    /// Authenticate with Windows credentials.
+    /// Authenticate with Windows/NTLM credentials (domain + username + password).
     #[cfg(any(all(windows, feature = "winauth"), doc))]
     #[cfg_attr(feature = "docs", doc(cfg(all(windows, feature = "winauth"))))]
     Windows(WindowsAuth),
-    /// Authenticate as the currently logged in user. On Windows uses SSPI and
-    /// Kerberos on Unix platforms.
+    /// Authenticate as the currently logged-in user via SSPI (Windows) or
+    /// Kerberos/GSSAPI (Unix). Requires the `winauth` or
+    /// `integrated-auth-gssapi` feature.
     #[cfg(any(
         all(windows, feature = "winauth"),
         all(unix, feature = "integrated-auth-gssapi"),
@@ -67,15 +84,16 @@ pub enum AuthMethod {
         doc(cfg(any(windows, all(unix, feature = "integrated-auth-gssapi"))))
     )]
     Integrated,
-    /// Authenticate with an AAD token. The token should encode an AAD user/service principal
-    /// which has access to SQL Server.
+    /// Authenticate with an Azure Active Directory (AAD) token. The token
+    /// should encode an AAD user or service principal with SQL Server access.
     AADToken(String),
     #[doc(hidden)]
     None,
 }
 
 impl AuthMethod {
-    /// Construct a new SQL Server authentication configuration.
+    /// Creates a SQL Server authentication method with the given username and
+    /// password.
     pub fn sql_server(user: impl ToString, password: impl ToString) -> Self {
         Self::SqlServer(SqlServerAuth {
             user: user.to_string(),
@@ -83,7 +101,10 @@ impl AuthMethod {
         })
     }
 
-    /// Construct a new Windows authentication configuration.
+    /// Creates a Windows/NTLM authentication method.
+    ///
+    /// The `user` can be in `DOMAIN\username` format; the domain is extracted
+    /// automatically.
     #[cfg(any(all(windows, feature = "winauth"), doc))]
     #[cfg_attr(feature = "docs", doc(cfg(all(windows, feature = "winauth"))))]
     pub fn windows(user: impl AsRef<str>, password: impl ToString) -> Self {
@@ -99,7 +120,7 @@ impl AuthMethod {
         })
     }
 
-    /// Construct a new configuration with AAD auth token.
+    /// Creates an AAD token authentication method with the given bearer token.
     pub fn aad_token(token: impl ToString) -> Self {
         Self::AADToken(token.to_string())
     }

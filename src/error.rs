@@ -4,8 +4,15 @@ pub use std::io::ErrorKind as IoErrorKind;
 use std::{borrow::Cow, convert::Infallible, io};
 use thiserror::Error;
 
-/// A unified error enum that contains several errors that might occurr during
-/// the lifecycle of this driver
+/// A unified error type for all failures in the tabby driver.
+///
+/// Errors can originate from I/O, protocol parsing, type conversion, TLS,
+/// or from SQL Server itself (see the [`Server`](Self::Server) variant).
+///
+/// # Server Errors
+///
+/// Use [`code()`](Self::code) to get the SQL Server error number and
+/// [`is_deadlock()`](Self::is_deadlock) as a convenience check for error 1205.
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum Error {
     #[error("An error occured during the attempt of performing I/O: {}", message)]

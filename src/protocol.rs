@@ -15,7 +15,11 @@ pub(crate) use session::*;
 pub(crate) const HEADER_BYTES: usize = 8;
 
 uint_enum! {
-    /// The configured encryption level specifying if encryption is required
+    /// The configured encryption level specifying if encryption is required.
+    ///
+    /// With a TLS feature enabled (`rustls`, `native-tls`, or `vendored-openssl`),
+    /// the default is [`Required`](Self::Required). Without TLS, the default is
+    /// [`NotSupported`](Self::NotSupported).
     #[repr(u8)]
     pub enum EncryptionLevel {
         /// Only use encryption for the login procedure
