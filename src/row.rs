@@ -219,7 +219,7 @@ impl From<&DataType> for ColumnType {
 /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
 /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
 /// # );
-/// # let config = Config::from_ado_string(&c_str)?;
+/// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
 /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
 /// # tcp.set_nodelay(true)?;
 /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
@@ -295,7 +295,7 @@ impl Row {
     /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
     /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
     /// # );
-    /// # let config = Config::from_ado_string(&c_str)?;
+    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
     /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
     /// # tcp.set_nodelay(true)?;
     /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
@@ -339,7 +339,7 @@ impl Row {
     /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
     /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
     /// # );
-    /// # let config = Config::from_ado_string(&c_str)?;
+    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
     /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
     /// # tcp.set_nodelay(true)?;
     /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
@@ -373,7 +373,7 @@ impl Row {
     /// # let c_str = env::var("TDS_TEST_CONNECTION_STRING").unwrap_or(
     /// #     "server=tcp:localhost,1433;integratedSecurity=true;TrustServerCertificate=true".to_owned(),
     /// # );
-    /// # let config = Config::from_ado_string(&c_str)?;
+    /// # config.host("localhost"); config.authentication(AuthMethod::sql_server("sa", "password"));
     /// # let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
     /// # tcp.set_nodelay(true)?;
     /// # let mut client = tabby::Client::connect(config, tcp.compat_write()).await?;
