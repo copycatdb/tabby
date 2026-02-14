@@ -105,6 +105,83 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
         })
     }
 
+    /// Connects to the database, automatically following Azure SQL Database
+    /// routing redirects.
+    ///
+    /// Azure SQL Database uses a gateway that redirects clients to the actual
+    /// worker node. This method handles that transparently by using the
+    /// provided `connector` closure to establish a new TCP connection when
+    /// a redirect is received.
+    ///
+    /// The `connector` closure receives `(host, port)` and should return an
+    /// async stream (e.g., a TLS-wrapped `TcpStream`).
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use tabby::{Client, Config, AuthMethod};
+    /// # use tokio::net::TcpStream;
+    /// # use tokio_util::compat::TokioAsyncWriteCompatExt;
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut config = Config::new();
+    /// config.host("myserver.database.windows.net");
+    /// config.authentication(AuthMethod::sql_server("user", "password"));
+    /// config.trust_cert();
+    ///
+    /// let mut client = Client::connect_with_redirect(config, |host, port| async move {
+    ///     let addr = format!("{}:{}", host, port);
+    ///     let tcp = TcpStream::connect(&addr).await?;
+    ///     tcp.set_nodelay(true)?;
+    ///     Ok(tcp.compat_write())
+    /// }).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn connect_with_redirect<F, Fut>(
+        config: Config,
+        connector: F,
+    ) -> crate::Result<Client<S>>
+    where
+        F: Fn(String, u16) -> Fut,
+        Fut: std::future::Future<
+                Output = std::result::Result<S, Box<dyn std::error::Error + Send + Sync>>,
+            >,
+    {
+        let host = config.get_host().to_string();
+        let port = config.get_port();
+
+        let initial_stream = connector(host, port).await.map_err(|e| crate::Error::Io {
+            kind: std::io::ErrorKind::ConnectionRefused,
+            message: e.to_string(),
+        })?;
+
+        match Connection::connect(config.clone(), initial_stream).await {
+            Ok(connection) => Ok(Client { connection }),
+            Err(crate::Error::Routing { host, port }) => {
+                let redirected_stream =
+                    connector(host.clone(), port)
+                        .await
+                        .map_err(|e| crate::Error::Io {
+                            kind: std::io::ErrorKind::ConnectionRefused,
+                            message: format!(
+                                "Failed to connect to redirected address {}:{}: {}",
+                                host, port, e
+                            ),
+                        })?;
+
+                let mut redirected_config = config;
+                redirected_config.host(&host);
+                redirected_config.port(port);
+
+                Ok(Client {
+                    connection: Connection::connect(redirected_config, redirected_stream).await?,
+                })
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// Executes SQL statements and returns the number of rows affected.
     ///
     /// Useful for `INSERT`, `UPDATE`, and `DELETE` statements. Parameters are
