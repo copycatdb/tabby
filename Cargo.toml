@@ -15,7 +15,7 @@ tokio-util = { version = "0.7", features = ["compat"] }
 tokio-rustls = "0.26"
 rustls = "0.23"
 once_cell = "1"
-chrono = { version = "0.4", default-features = false }
+chrono = { version = "0.4", default-features = false, optional = true }
 uuid = { version = "1", features = ["v4"] }
 futures-util = { version = "0.3", default-features = false, features = ["io", "sink"] }
 rust_decimal = "1"
@@ -44,7 +44,7 @@ winauth = []
 docs = []
 bigdecimal = []
 rust_decimal = []
-chrono = []
+chrono = ["dep:chrono"]
 time = []
 
 [dev-dependencies]

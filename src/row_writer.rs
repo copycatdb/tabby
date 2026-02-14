@@ -44,7 +44,7 @@ pub trait RowWriter {
     fn write_str(&mut self, col: usize, val: &str);
     /// Binary value — borrowed, no allocation needed by the caller.
     fn write_bytes(&mut self, col: usize, val: &[u8]);
-    /// Date as days since CE epoch (0001-01-01). Used for TDS `date`.
+    /// Date as days since Unix epoch (1970-01-01). Used for TDS `date`.
     fn write_date(&mut self, col: usize, days: i32);
     /// Time as nanoseconds since midnight. Used for TDS `time`.
     fn write_time(&mut self, col: usize, nanos: i64);
@@ -137,8 +137,10 @@ impl RowWriter for SqlValueWriter {
             )));
     }
     fn write_date(&mut self, _col: usize, days: i32) {
+        // Convert from Unix epoch days back to CE epoch days for the Date type
+        let ce_days = (days as i64 + 719_162) as u32;
         self.values.push(crate::protocol::wire::SqlValue::Date(Some(
-            crate::temporal::Date::new(days as u32),
+            crate::temporal::Date::new(ce_days),
         )));
     }
     fn write_time(&mut self, _col: usize, nanos: i64) {

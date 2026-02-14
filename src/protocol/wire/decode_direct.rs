@@ -7,8 +7,14 @@ use crate::protocol::reader::ProtocolReader;
 use crate::protocol::wire::{DataType, FixedLenType, VarLenDescriptor, VarLenType};
 use crate::row_writer::RowWriter;
 use byteorder::{ByteOrder, LittleEndian};
-use chrono::NaiveDate;
 use futures_util::io::AsyncReadExt;
+
+/// Days from CE epoch (0001-01-01) to Unix epoch (1970-01-01).
+const CE_TO_UNIX_DAYS: i64 = 719_162;
+/// Days from SQL Server epoch (1900-01-01) to Unix epoch (1970-01-01).
+const SQL_TO_UNIX_DAYS: i64 = 25_567;
+/// Microseconds per day.
+const MICROS_PER_DAY: i64 = 86_400_000_000;
 
 /// Decode a single column value from the TDS wire and write it directly
 /// to the RowWriter. No SqlValue is created.
@@ -231,12 +237,8 @@ async fn decode_varlen_into<R: ProtocolReader + Unpin>(
                 3 => {
                     let mut bytes = [0u8; 4];
                     src.read_exact(&mut bytes[..3]).await?;
-                    let days = LittleEndian::read_u32(&bytes);
-                    // Convert from CE epoch (0001-01-01) to Unix epoch
-                    let base = NaiveDate::from_ymd_opt(1, 1, 1).unwrap();
-                    let date = base + chrono::Duration::days(days as i64);
-                    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
-                    let unix_days = (date - epoch).num_days() as i32;
+                    let ce_days = LittleEndian::read_u32(&bytes) as i64;
+                    let unix_days = (ce_days - CE_TO_UNIX_DAYS) as i32;
                     writer.write_date(col, unix_days);
                 }
                 _ => {
@@ -329,29 +331,21 @@ async fn decode_datetime_into<R: ProtocolReader + Unpin>(
     match (rlen, type_len) {
         (0, _) => writer.write_null(col),
         (4, _) => {
-            // SmallDateTime
+            // SmallDateTime: u16 days since 1900-01-01, u16 minutes since midnight
             let days = src.read_u16_le().await? as i64;
             let mins = src.read_u16_le().await? as i64;
-            let base = NaiveDate::from_ymd_opt(1900, 1, 1).unwrap();
-            let date = base + chrono::Duration::days(days);
-            let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt((mins * 60) as u32, 0)
-                .unwrap_or_default();
-            let ndt = chrono::NaiveDateTime::new(date, time);
-            writer.write_datetime(col, ndt.and_utc().timestamp_micros());
+            let unix_days = days - SQL_TO_UNIX_DAYS;
+            let micros = unix_days * MICROS_PER_DAY + mins * 60 * 1_000_000;
+            writer.write_datetime(col, micros);
         }
         (8, _) => {
-            // DateTime
+            // DateTime: i32 days since 1900-01-01, u32 ticks (1/300th second)
             let days = src.read_i32_le().await? as i64;
-            let ticks = src.read_u32_le().await? as i64; // 1/300 sec
-            let base = NaiveDate::from_ymd_opt(1900, 1, 1).unwrap();
-            let date = base + chrono::Duration::days(days);
-            let total_ms = ticks * 1000 / 300;
-            let secs = (total_ms / 1000) as u32;
-            let remaining_micros = (total_ms % 1000) * 1000;
-            let time =
-                chrono::NaiveTime::from_num_seconds_from_midnight_opt(secs, 0).unwrap_or_default();
-            let ndt = chrono::NaiveDateTime::new(date, time);
-            writer.write_datetime(col, ndt.and_utc().timestamp_micros() + remaining_micros);
+            let ticks = src.read_u32_le().await? as i64;
+            let unix_days = days - SQL_TO_UNIX_DAYS;
+            // ticks * 1_000_000 / 300 = ticks * 10000 / 3
+            let micros = unix_days * MICROS_PER_DAY + ticks * 10_000 / 3;
+            writer.write_datetime(col, micros);
         }
         _ => {
             return Err(crate::Error::Protocol(
@@ -390,17 +384,14 @@ async fn decode_money_into<R: ProtocolReader + Unpin>(
     Ok(())
 }
 
-/// Convert DateTime2 to microseconds since Unix epoch.
+/// Convert DateTime2 to microseconds since Unix epoch using pure integer math.
 fn datetime2_to_micros(dt: &crate::temporal::DateTime2) -> i64 {
-    let base = NaiveDate::from_ymd_opt(1, 1, 1).unwrap();
-    let date = base + chrono::Duration::days(dt.date().days() as i64);
+    let ce_days = dt.date().days() as i64;
+    let unix_days = ce_days - CE_TO_UNIX_DAYS;
     let t = dt.time();
-    let nanos = t.increments() * 10u64.pow(9 - t.scale() as u32);
-    let secs = (nanos / 1_000_000_000) as u32;
-    let remaining_micros = ((nanos % 1_000_000_000) / 1000) as i64;
-    let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(secs, 0).unwrap_or_default();
-    let ndt = chrono::NaiveDateTime::new(date, time);
-    ndt.and_utc().timestamp_micros() + remaining_micros
+    let nanos = t.increments() as i64 * 10i64.pow(9 - t.scale() as u32);
+    let time_micros = nanos / 1_000;
+    unix_days * MICROS_PER_DAY + time_micros
 }
 
 /// Fallback: write a SqlValue through the RowWriter (for rare types like XML, Text, Image).
@@ -447,34 +438,26 @@ fn write_sqlvalue_into(
             writer.write_str(col, &s);
         }
         SqlValue::DateTime(Some(dt)) => {
-            let base = NaiveDate::from_ymd_opt(1900, 1, 1).unwrap();
-            let date = base + chrono::Duration::days(dt.days() as i64);
+            let days = dt.days() as i64;
             let ticks = dt.seconds_fragments() as i64;
-            let total_ms = ticks * 1000 / 300;
-            let secs = (total_ms / 1000) as u32;
-            let remaining_micros = (total_ms % 1000) * 1000;
-            let time =
-                chrono::NaiveTime::from_num_seconds_from_midnight_opt(secs, 0).unwrap_or_default();
-            let ndt = chrono::NaiveDateTime::new(date, time);
-            writer.write_datetime(col, ndt.and_utc().timestamp_micros() + remaining_micros);
+            let unix_days = days - SQL_TO_UNIX_DAYS;
+            let micros = unix_days * MICROS_PER_DAY + ticks * 10_000 / 3;
+            writer.write_datetime(col, micros);
         }
         SqlValue::SmallDateTime(Some(dt)) => {
-            let base = NaiveDate::from_ymd_opt(1900, 1, 1).unwrap();
-            let date = base + chrono::Duration::days(dt.days() as i64);
-            let mins = dt.seconds_fragments() as u32;
-            let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(mins * 60, 0)
-                .unwrap_or_default();
-            let ndt = chrono::NaiveDateTime::new(date, time);
-            writer.write_datetime(col, ndt.and_utc().timestamp_micros());
+            let days = dt.days() as i64;
+            let mins = dt.seconds_fragments() as i64;
+            let unix_days = days - SQL_TO_UNIX_DAYS;
+            let micros = unix_days * MICROS_PER_DAY + mins * 60 * 1_000_000;
+            writer.write_datetime(col, micros);
         }
         SqlValue::DateTime2(Some(dt)) => {
             writer.write_datetime(col, datetime2_to_micros(dt));
         }
         SqlValue::Date(Some(d)) => {
-            let base = NaiveDate::from_ymd_opt(1, 1, 1).unwrap();
-            let date = base + chrono::Duration::days(d.days() as i64);
-            let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
-            writer.write_date(col, (date - epoch).num_days() as i32);
+            let ce_days = d.days() as i64;
+            let unix_days = (ce_days - CE_TO_UNIX_DAYS) as i32;
+            writer.write_date(col, unix_days);
         }
         SqlValue::Time(Some(t)) => {
             let nanos = t.increments() as i64 * 10i64.pow(9 - t.scale() as u32);
