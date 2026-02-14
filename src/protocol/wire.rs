@@ -1,9 +1,10 @@
 mod bulk_import;
 mod data_type;
 mod decode;
+pub(crate) mod decode_direct;
 mod encode;
 mod frame;
-mod guid;
+pub(crate) mod guid;
 mod handshake;
 mod header;
 mod iterator_ext;
@@ -11,7 +12,7 @@ mod login;
 mod messages;
 mod procedure_call;
 mod raw_query;
-mod types;
+pub(crate) mod types;
 
 pub use bulk_import::*;
 use bytes::BytesMut;

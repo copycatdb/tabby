@@ -75,6 +75,7 @@ pub mod error;
 mod protocol;
 mod result;
 mod row;
+pub mod row_writer;
 
 mod discovery;
 
@@ -95,6 +96,7 @@ pub use protocol::{
 };
 pub use result::*;
 pub use row::{Column, ColumnType, Row};
+pub use row_writer::RowWriter;
 
 use protocol::reader::*;
 use protocol::wire::*;

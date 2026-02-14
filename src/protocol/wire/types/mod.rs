@@ -10,7 +10,7 @@ mod guid;
 mod image;
 mod int;
 mod money;
-mod plp;
+pub(crate) mod plp;
 mod string;
 mod text;
 mod time;
