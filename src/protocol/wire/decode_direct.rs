@@ -191,7 +191,7 @@ async fn decode_varlen_into<R: ProtocolReader + Unpin>(
             let data = super::types::plp::decode(src, len).await?;
             match data {
                 Some(buf) => {
-                    if buf.len() % 2 != 0 {
+                    if !buf.len().is_multiple_of(2) {
                         return Err(crate::Error::Protocol(
                             "nvarchar: invalid plp length".into(),
                         ));

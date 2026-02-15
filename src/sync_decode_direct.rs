@@ -174,7 +174,7 @@ fn decode_varlen_into_sync<R: SyncProtocolReader>(
             let data = plp_decode_sync(src, len)?;
             match data {
                 Some(buf) => {
-                    if buf.len() % 2 != 0 {
+                    if !buf.len().is_multiple_of(2) {
                         return Err(crate::Error::Protocol(
                             "nvarchar: invalid plp length".into(),
                         ));

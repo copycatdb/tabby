@@ -32,7 +32,7 @@ where
         }
         // UTF-16
         (Some(buf), _) => {
-            if buf.len() % 2 != 0 {
+            if !buf.len().is_multiple_of(2) {
                 return Err(Error::Protocol("nvarchar: invalid plp length".into()));
             }
 

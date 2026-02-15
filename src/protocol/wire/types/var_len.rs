@@ -185,7 +185,7 @@ where
             // props: collation (5 bytes), then max_len (2 bytes)
             let mut buf = vec![0u8; data_len];
             src.read_exact(&mut buf).await?;
-            if buf.len() % 2 != 0 {
+            if !buf.len().is_multiple_of(2) {
                 return Err(crate::Error::Protocol(
                     "sql_variant nvarchar: odd length".into(),
                 ));
