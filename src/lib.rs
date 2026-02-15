@@ -63,6 +63,8 @@ pub use row_writer::RowWriter;
 // Hidden re-exports for integration tests and backward compatibility.
 // Users should prefer the `claw` crate for these types.
 #[doc(hidden)]
+pub use connection::BatchFetchResult;
+#[doc(hidden)]
 pub use connection::Client;
 #[doc(hidden)]
 pub use connection::Connection;

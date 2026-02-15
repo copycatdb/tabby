@@ -34,6 +34,17 @@ use crate::{
     },
     result::ExecuteResult,
 };
+
+/// Result of a single `batch_fetch_row` call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BatchFetchResult {
+    /// A row was decoded and written to the RowWriter.
+    Row,
+    /// The current result set is complete. Contains the number of rows affected.
+    Done(u64),
+    /// Another result set follows. Call `batch_fetch_metadata` to read its columns.
+    MoreResults,
+}
 use enumflags2::BitFlags;
 use futures_util::io::{AsyncRead, AsyncWrite};
 use futures_util::stream::TryStreamExt;
@@ -900,5 +911,235 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
         }
 
         Ok(())
+    }
+
+    /// Send a raw SQL batch and read tokens until the first ColMetaData,
+    /// returning the column metadata. The connection is left positioned to
+    /// read Row tokens via [`batch_fetch_row`].
+    ///
+    /// If the batch produces no result set (e.g. INSERT/UPDATE), this reads
+    /// all tokens and returns an empty Vec.
+    pub async fn batch_start<'a, 'b>(
+        &'a mut self,
+        query: impl Into<Cow<'b, str>>,
+    ) -> crate::Result<Vec<Column>>
+    where
+        'a: 'b,
+    {
+        self.connection.flush_stream().await?;
+
+        let req = RawQuery::new(query, self.connection.context().transaction_descriptor());
+        let id = self.connection.context_mut().next_packet_id();
+        self.connection.send(PacketHeader::batch(id), req).await?;
+
+        self.batch_read_until_metadata().await
+    }
+
+    /// Read tokens until ColMetaData is found, returning columns.
+    /// Used by batch_start and batch_fetch_metadata.
+    async fn batch_read_until_metadata(&mut self) -> crate::Result<Vec<Column>> {
+        loop {
+            if self.connection.is_eof() {
+                return Ok(Vec::new());
+            }
+
+            let ty_byte = self.connection.read_u8().await?;
+            let ty = MessageKind::try_from(ty_byte).map_err(|_| {
+                crate::Error::Protocol(format!("invalid token type {:x}", ty_byte).into())
+            })?;
+
+            match ty {
+                MessageKind::ColMetaData => {
+                    let meta =
+                        std::sync::Arc::new(ColumnSchema::decode(&mut self.connection).await?);
+                    self.connection.context_mut().set_last_meta(meta.clone());
+
+                    let columns: Vec<Column> = meta
+                        .columns
+                        .iter()
+                        .map(|x| Column {
+                            name: x.col_name.to_string(),
+                            column_type: crate::row::ColumnType::from(&x.base.ty),
+                            type_info: Some(x.base.ty.clone()),
+                            nullable: Some(x.base.flags.contains(ColumnAttribute::Nullable)),
+                        })
+                        .collect();
+
+                    return Ok(columns);
+                }
+                MessageKind::Done | MessageKind::DoneProc | MessageKind::DoneInProc => {
+                    let _done = CompletionMessage::decode(&mut self.connection).await?;
+                    if self.connection.is_eof() {
+                        return Ok(Vec::new());
+                    }
+                }
+                MessageKind::ReturnStatus => {
+                    let _status = self.connection.read_u32_le().await?;
+                }
+                MessageKind::ReturnValue => {
+                    let _rv = ReturnValue::decode(&mut self.connection).await?;
+                }
+                MessageKind::Error => {
+                    let err = ServerError::decode(&mut self.connection).await?;
+                    return Err(crate::Error::Server(err));
+                }
+                MessageKind::Info => {
+                    let _info = ServerNotice::decode(&mut self.connection).await?;
+                }
+                MessageKind::EnvChange => {
+                    let change = SessionChange::decode(&mut self.connection).await?;
+                    self.apply_env_change(change);
+                }
+                MessageKind::Order => {
+                    let _order = OrderMessage::decode(&mut self.connection).await?;
+                }
+                _ => {
+                    return Err(crate::Error::Protocol(
+                        format!("unexpected token {:?} in batch_start", ty).into(),
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Read the next token from the TDS stream after a `batch_start` call.
+    ///
+    /// - Returns `BatchFetchResult::Row` if a row was decoded into the writer.
+    /// - Returns `BatchFetchResult::Done(n)` when the result set is complete.
+    /// - Returns `BatchFetchResult::MoreResults` when another result set follows.
+    ///
+    /// After `MoreResults`, call `batch_fetch_metadata` to read the next
+    /// result set's column schema.
+    pub async fn batch_fetch_row<W: crate::row_writer::RowWriter>(
+        &mut self,
+        writer: &mut W,
+        string_buf: &mut String,
+        bytes_buf: &mut Vec<u8>,
+    ) -> crate::Result<BatchFetchResult> {
+        loop {
+            if self.connection.is_eof() {
+                return Ok(BatchFetchResult::Done(0));
+            }
+
+            let ty_byte = self.connection.read_u8().await?;
+            let ty = MessageKind::try_from(ty_byte).map_err(|_| {
+                crate::Error::Protocol(format!("invalid token type {:x}", ty_byte).into())
+            })?;
+
+            match ty {
+                MessageKind::Row => {
+                    crate::protocol::wire::decode_direct::decode_row_into(
+                        &mut self.connection,
+                        writer,
+                        string_buf,
+                        bytes_buf,
+                    )
+                    .await?;
+                    return Ok(BatchFetchResult::Row);
+                }
+                MessageKind::NbcRow => {
+                    crate::protocol::wire::decode_direct::decode_nbc_row_into(
+                        &mut self.connection,
+                        writer,
+                        string_buf,
+                        bytes_buf,
+                    )
+                    .await?;
+                    return Ok(BatchFetchResult::Row);
+                }
+                MessageKind::Done | MessageKind::DoneProc | MessageKind::DoneInProc => {
+                    let done = CompletionMessage::decode(&mut self.connection).await?;
+                    let rows = done.rows();
+                    if done.has_more() && !self.connection.is_eof() {
+                        return Ok(BatchFetchResult::MoreResults);
+                    }
+                    if self.connection.is_eof() {
+                        return Ok(BatchFetchResult::Done(rows));
+                    }
+                    // Non-final done without More flag but not EOF — keep reading
+                    // (can happen with intermediate DONE tokens)
+                    return Ok(BatchFetchResult::Done(rows));
+                }
+                MessageKind::ReturnStatus => {
+                    let _status = self.connection.read_u32_le().await?;
+                }
+                MessageKind::ReturnValue => {
+                    let _rv = ReturnValue::decode(&mut self.connection).await?;
+                }
+                MessageKind::Error => {
+                    let err = ServerError::decode(&mut self.connection).await?;
+                    return Err(crate::Error::Server(err));
+                }
+                MessageKind::Info => {
+                    let info = ServerNotice::decode(&mut self.connection).await?;
+                    writer.on_info(info.number, &info.message);
+                }
+                MessageKind::EnvChange => {
+                    let change = SessionChange::decode(&mut self.connection).await?;
+                    self.apply_env_change(change);
+                }
+                MessageKind::Order => {
+                    let _order = OrderMessage::decode(&mut self.connection).await?;
+                }
+                MessageKind::ColMetaData => {
+                    // New result set metadata — this shouldn't happen during row fetch
+                    // but handle it gracefully by signaling MoreResults
+                    let meta =
+                        std::sync::Arc::new(ColumnSchema::decode(&mut self.connection).await?);
+                    self.connection.context_mut().set_last_meta(meta);
+                    return Ok(BatchFetchResult::MoreResults);
+                }
+                _ => {
+                    return Err(crate::Error::Protocol(
+                        format!("unexpected token {:?} in batch_fetch_row", ty).into(),
+                    ));
+                }
+            }
+        }
+    }
+
+    /// After `batch_fetch_row` returns `MoreResults`, call this to read the
+    /// next result set's column metadata.
+    pub async fn batch_fetch_metadata(&mut self) -> crate::Result<Vec<Column>> {
+        self.batch_read_until_metadata().await
+    }
+
+    /// Drain remaining tokens until the connection is at EOF.
+    /// Useful for canceling a streaming query mid-way.
+    pub async fn batch_drain(&mut self) -> crate::Result<()> {
+        let mut dummy_str = String::new();
+        let mut dummy_bytes = Vec::new();
+        let mut dummy_writer = crate::row_writer::SqlValueWriter::with_capacity(0);
+        loop {
+            match self
+                .batch_fetch_row(&mut dummy_writer, &mut dummy_str, &mut dummy_bytes)
+                .await?
+            {
+                BatchFetchResult::Row => continue,
+                BatchFetchResult::MoreResults => continue,
+                BatchFetchResult::Done(_) => return Ok(()),
+            }
+        }
+    }
+
+    fn apply_env_change(&mut self, change: SessionChange) {
+        match change {
+            SessionChange::PacketSize(new_size, _) => {
+                self.connection.context_mut().set_packet_size(new_size);
+            }
+            SessionChange::BeginTransaction(desc) => {
+                self.connection
+                    .context_mut()
+                    .set_transaction_descriptor(desc);
+            }
+            SessionChange::CommitTransaction
+            | SessionChange::RollbackTransaction
+            | SessionChange::DefectTransaction => {
+                self.connection
+                    .context_mut()
+                    .set_transaction_descriptor([0; 8]);
+            }
+            _ => (),
+        }
     }
 }
