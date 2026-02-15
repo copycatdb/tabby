@@ -154,6 +154,70 @@ impl Numeric {
             Ok(Some(Numeric::new_with_scale(value, scale)))
         }
     }
+
+    /// Decode a numeric value from `data_len` bytes (no leading length byte).
+    /// Used by sql_variant where the data length is already known.
+    pub(crate) async fn decode_bytes<R>(
+        src: &mut R,
+        data_len: usize,
+        scale: u8,
+    ) -> crate::Result<Option<Self>>
+    where
+        R: ProtocolReader + Unpin,
+    {
+        if data_len == 0 {
+            return Ok(None);
+        }
+
+        fn decode_d128(buf: &[u8]) -> u128 {
+            let low_part = LittleEndian::read_u64(&buf[0..]) as u128;
+            if !buf[8..].iter().any(|x| *x != 0) {
+                return low_part;
+            }
+            let high_part = match buf.len() {
+                12 => LittleEndian::read_u32(&buf[8..]) as u128,
+                16 => LittleEndian::read_u64(&buf[8..]) as u128,
+                _ => unreachable!(),
+            };
+            #[cfg(target_endian = "big")]
+            let (low_part, high_part) = (high_part, low_part);
+            let high_part = high_part * (u64::MAX as u128 + 1);
+            low_part + high_part
+        }
+
+        let sign = match src.read_u8().await? {
+            0 => -1i128,
+            1 => 1i128,
+            _ => return Err(Error::Protocol("decimal: invalid sign".into())),
+        };
+
+        let int_bytes = data_len - 1; // subtract sign byte
+        let value = match int_bytes {
+            4 => src.read_u32_le().await? as i128 * sign,
+            8 => src.read_u64_le().await? as i128 * sign,
+            12 => {
+                let mut bytes = [0u8; 12];
+                for item in &mut bytes {
+                    *item = src.read_u8().await?;
+                }
+                decode_d128(&bytes) as i128 * sign
+            }
+            16 => {
+                let mut bytes = [0u8; 16];
+                for item in &mut bytes {
+                    *item = src.read_u8().await?;
+                }
+                decode_d128(&bytes) as i128 * sign
+            }
+            x => {
+                return Err(Error::Protocol(
+                    format!("decimal/numeric: invalid int length of {} received", x).into(),
+                ));
+            }
+        };
+
+        Ok(Some(Numeric::new_with_scale(value, scale)))
+    }
 }
 
 impl Encode<BytesMut> for Numeric {

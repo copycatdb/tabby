@@ -294,6 +294,21 @@ impl DataType {
                     VarLenType::Image | VarLenType::Text | VarLenType::NText => {
                         src.read_u32_le().await? as usize
                     }
+                    VarLenType::SSVariant => {
+                        // sql_variant: 4-byte max length
+                        src.read_u32_le().await? as usize
+                    }
+                    VarLenType::Udt => {
+                        // UDT (CLR): read max length (u16), then skip metadata strings
+                        let max_len = src.read_u16_le().await? as usize;
+                        // db_name, schema_name, type_name (B_VARCHAR)
+                        let _db_name = src.read_b_varchar().await?;
+                        let _schema_name = src.read_b_varchar().await?;
+                        let _type_name = src.read_b_varchar().await?;
+                        // assembly qualified name (US_VARCHAR)
+                        let _asm_name = src.read_us_varchar().await?;
+                        max_len
+                    }
                     _ => todo!("not yet implemented for {:?}", ty),
                 };
 

@@ -299,7 +299,18 @@ async fn decode_varlen_into<R: ProtocolReader + Unpin>(
                 crate::protocol::wire::SqlValue::decode(src, &DataType::VarLenSized(*vlc)).await?;
             write_sqlvalue_into(col, &val, writer);
         }
-        t => unimplemented!("{:?}", t),
+        t => {
+            // SSVariant and Udt: fall back to SqlValue decode path
+            match t {
+                VarLenType::SSVariant | VarLenType::Udt => {
+                    let val =
+                        crate::protocol::wire::SqlValue::decode(src, &DataType::VarLenSized(*vlc))
+                            .await?;
+                    write_sqlvalue_into(col, &val, writer);
+                }
+                _ => unimplemented!("{:?}", t),
+            }
+        }
     }
     Ok(())
 }

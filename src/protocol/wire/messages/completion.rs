@@ -54,6 +54,10 @@ impl CompletionMessage {
         self.status.is_empty()
     }
 
+    pub(crate) fn has_more(&self) -> bool {
+        self.status.contains(CompletionStatus::More)
+    }
+
     pub(crate) fn rows(&self) -> u64 {
         self.done_rows
     }

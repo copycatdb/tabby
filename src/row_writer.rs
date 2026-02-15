@@ -70,6 +70,10 @@ pub trait RowWriter {
     /// Called when a Done/DoneProc/DoneInProc token is received with a row count.
     /// Use this to capture `@@ROWCOUNT` for DML statements (INSERT/UPDATE/DELETE).
     fn on_done(&mut self, _rows: u64) {}
+
+    /// Called when a result set ends but more result sets follow.
+    /// Fired on DONE/DONEINPROC tokens with the MORE flag set between result sets.
+    fn on_result_set_end(&mut self) {}
 }
 
 /// A `RowWriter` that collects values into a `Vec<SqlValue>`, preserving
