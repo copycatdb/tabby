@@ -914,14 +914,30 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
     }
 
     /// Send a raw SQL batch and read tokens until the first ColMetaData,
+    /// returning the column metadata. Convenience wrapper that discards
+    /// the rows-affected count.
+    pub async fn batch_start<'a, 'b>(
+        &'a mut self,
+        query: impl Into<Cow<'b, str>>,
+    ) -> crate::Result<Vec<Column>>
+    where
+        'a: 'b,
+    {
+        let mut dummy = 0u64;
+        self.batch_start_with_rowcount(query, &mut dummy).await
+    }
+
+    /// Send a raw SQL batch and read tokens until the first ColMetaData,
     /// returning the column metadata. The connection is left positioned to
     /// read Row tokens via [`batch_fetch_row`].
     ///
     /// If the batch produces no result set (e.g. INSERT/UPDATE), this reads
-    /// all tokens and returns an empty Vec.
-    pub async fn batch_start<'a, 'b>(
+    /// all tokens and returns an empty Vec. The `rows_affected` out-param
+    /// is set to the total rows affected by DML statements.
+    pub async fn batch_start_with_rowcount<'a, 'b>(
         &'a mut self,
         query: impl Into<Cow<'b, str>>,
+        rows_affected: &mut u64,
     ) -> crate::Result<Vec<Column>>
     where
         'a: 'b,
@@ -932,12 +948,17 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
         let id = self.connection.context_mut().next_packet_id();
         self.connection.send(PacketHeader::batch(id), req).await?;
 
-        self.batch_read_until_metadata().await
+        *rows_affected = 0;
+        self.batch_read_until_metadata_with_rowcount(rows_affected)
+            .await
     }
 
     /// Read tokens until ColMetaData is found, returning columns.
     /// Used by batch_start and batch_fetch_metadata.
-    async fn batch_read_until_metadata(&mut self) -> crate::Result<Vec<Column>> {
+    async fn batch_read_until_metadata_with_rowcount(
+        &mut self,
+        rows_affected: &mut u64,
+    ) -> crate::Result<Vec<Column>> {
         loop {
             if self.connection.is_eof() {
                 return Ok(Vec::new());
@@ -968,7 +989,8 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
                     return Ok(columns);
                 }
                 MessageKind::Done | MessageKind::DoneProc | MessageKind::DoneInProc => {
-                    let _done = CompletionMessage::decode(&mut self.connection).await?;
+                    let done = CompletionMessage::decode(&mut self.connection).await?;
+                    *rows_affected += done.rows();
                     if self.connection.is_eof() {
                         return Ok(Vec::new());
                     }
@@ -1101,7 +1123,9 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
     /// After `batch_fetch_row` returns `MoreResults`, call this to read the
     /// next result set's column metadata.
     pub async fn batch_fetch_metadata(&mut self) -> crate::Result<Vec<Column>> {
-        self.batch_read_until_metadata().await
+        let mut dummy = 0u64;
+        self.batch_read_until_metadata_with_rowcount(&mut dummy)
+            .await
     }
 
     /// Drain remaining tokens until the connection is at EOF.
