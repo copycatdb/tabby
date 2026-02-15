@@ -36,6 +36,7 @@ rustls-native-certs = "0.8"
 
 [features]
 default = ["rustls"]
+sync = []
 rustls = []
 native-tls = []
 vendored-openssl = []

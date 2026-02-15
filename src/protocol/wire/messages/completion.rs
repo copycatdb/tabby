@@ -50,6 +50,18 @@ impl CompletionMessage {
         })
     }
 
+    pub(crate) fn from_parts(
+        status: enumflags2::BitFlags<CompletionStatus>,
+        cur_cmd: u16,
+        done_rows: u64,
+    ) -> Self {
+        CompletionMessage {
+            status,
+            cur_cmd,
+            done_rows,
+        }
+    }
+
     pub(crate) fn is_final(&self) -> bool {
         self.status.is_empty()
     }

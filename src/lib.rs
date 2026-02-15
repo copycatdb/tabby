@@ -41,6 +41,20 @@ pub mod result;
 pub mod row;
 pub mod row_writer;
 
+#[cfg(feature = "sync")]
+pub mod sync_client;
+#[cfg(feature = "sync")]
+pub mod sync_connection;
+#[cfg(feature = "sync")]
+mod sync_decode;
+#[cfg(feature = "sync")]
+mod sync_decode_direct;
+#[cfg(feature = "sync")]
+pub mod sync_reader;
+
+#[cfg(feature = "sync")]
+pub use sync_client::SyncClient;
+
 // ── Public API: wire-protocol types only ─────────────────────────────
 
 pub use connection::{AuthMethod, Config};

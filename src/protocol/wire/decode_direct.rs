@@ -411,7 +411,7 @@ fn datetime2_to_micros(dt: &crate::temporal::DateTime2) -> i64 {
 }
 
 /// Fallback: write a SqlValue through the RowWriter (for rare types like XML, Text, Image).
-fn write_sqlvalue_into(
+pub(crate) fn write_sqlvalue_into(
     col: usize,
     val: &crate::protocol::wire::SqlValue<'_>,
     writer: &mut impl RowWriter,
