@@ -196,11 +196,25 @@ async fn decode_varlen_into<R: ProtocolReader + Unpin>(
                             "nvarchar: invalid plp length".into(),
                         ));
                     }
-                    let utf16_buf: Vec<u16> = buf
-                        .chunks_exact(2)
-                        .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                        .collect();
-                    writer.write_utf16(col, &utf16_buf);
+                    // SAFETY: buf is aligned to u8, but u16 from LE bytes is safe via
+                    // from_le_bytes. We reinterpret as &[u16] only on LE platforms,
+                    // otherwise collect.
+                    #[cfg(target_endian = "little")]
+                    {
+                        // SAFETY: buf.len() is even, and on LE the byte representation
+                        // of &[u8] pairs is identical to &[u16] in LE order.
+                        let ptr = buf.as_ptr() as *const u16;
+                        let utf16_slice = unsafe { std::slice::from_raw_parts(ptr, buf.len() / 2) };
+                        writer.write_utf16(col, utf16_slice);
+                    }
+                    #[cfg(not(target_endian = "little"))]
+                    {
+                        let utf16_buf: Vec<u16> = buf
+                            .chunks_exact(2)
+                            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                            .collect();
+                        writer.write_utf16(col, &utf16_buf);
+                    }
                 }
                 None => writer.write_null(col),
             }
