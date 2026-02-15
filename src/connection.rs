@@ -844,7 +844,8 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
                     writer.on_row_done();
                 }
                 MessageKind::Done | MessageKind::DoneProc | MessageKind::DoneInProc => {
-                    let _done = CompletionMessage::decode(&mut self.connection).await?;
+                    let done = CompletionMessage::decode(&mut self.connection).await?;
+                    writer.on_done(done.rows());
                     if self.connection.is_eof() {
                         break;
                     }

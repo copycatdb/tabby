@@ -66,6 +66,10 @@ pub trait RowWriter {
 
     /// Called when a SQL Server info/message is received (PRINT, RAISERROR with severity ≤ 10).
     fn on_info(&mut self, _number: u32, _message: &str) {}
+
+    /// Called when a Done/DoneProc/DoneInProc token is received with a row count.
+    /// Use this to capture `@@ROWCOUNT` for DML statements (INSERT/UPDATE/DELETE).
+    fn on_done(&mut self, _rows: u64) {}
 }
 
 /// A `RowWriter` that collects values into a `Vec<SqlValue>`, preserving
