@@ -103,7 +103,7 @@ async fn decode_varlen_into<R: ProtocolReader + Unpin>(
     col: usize,
     vlc: &VarLenDescriptor,
     writer: &mut impl RowWriter,
-    string_buf: &mut String,
+    _string_buf: &mut String,
     _bytes_buf: &mut Vec<u8>,
 ) -> crate::Result<()> {
     let ty = vlc.r#type();
@@ -186,7 +186,8 @@ async fn decode_varlen_into<R: ProtocolReader + Unpin>(
             }
         }
         VarLenType::NChar | VarLenType::NVarchar => {
-            // UTF-16 string — decode into reusable buffer
+            // UTF-16 string — pass raw u16 slice via write_utf16 to avoid
+            // the UTF-16 → UTF-8 → UTF-16 round-trip for ODBC consumers.
             let data = super::types::plp::decode(src, len).await?;
             match data {
                 Some(buf) => {
@@ -195,22 +196,11 @@ async fn decode_varlen_into<R: ProtocolReader + Unpin>(
                             "nvarchar: invalid plp length".into(),
                         ));
                     }
-                    string_buf.clear();
-                    // Decode UTF-16 LE directly into the reusable string buffer
-                    let iter = buf
+                    let utf16_buf: Vec<u16> = buf
                         .chunks_exact(2)
-                        .map(|c| u16::from_le_bytes([c[0], c[1]]));
-                    for c in char::decode_utf16(iter) {
-                        match c {
-                            Ok(ch) => string_buf.push(ch),
-                            Err(_) => {
-                                return Err(crate::Error::Encoding(
-                                    "invalid UTF-16 sequence".into(),
-                                ));
-                            }
-                        }
-                    }
-                    writer.write_str(col, string_buf);
+                        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                        .collect();
+                    writer.write_utf16(col, &utf16_buf);
                 }
                 None => writer.write_null(col),
             }

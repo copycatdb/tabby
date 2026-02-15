@@ -57,6 +57,14 @@ pub trait RowWriter {
     /// GUID/UUID as raw 16 bytes (standard byte order, not TDS wire order).
     fn write_guid(&mut self, col: usize, bytes: &[u8; 16]);
 
+    /// UTF-16 string value — borrowed, no allocation needed by the caller.
+    /// Default impl converts to UTF-8 and delegates to `write_str`.
+    /// Override to avoid the UTF-16 → UTF-8 → UTF-16 round-trip.
+    fn write_utf16(&mut self, col: usize, val: &[u16]) {
+        let s = String::from_utf16_lossy(val);
+        self.write_str(col, &s);
+    }
+
     /// Called when a new result set starts (new ColMetaData token).
     /// Default implementation does nothing. Override to handle multi-result sets.
     fn on_metadata(&mut self, _columns: &[crate::row::Column]) {}
