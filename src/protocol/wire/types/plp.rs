@@ -1,4 +1,5 @@
 use crate::protocol::reader::ProtocolReader;
+use futures_util::io::AsyncReadExt;
 
 // WireDecode a partially length-prefixed type.
 pub(crate) async fn decode<R>(src: &mut R, len: usize) -> crate::Result<Option<Vec<u8>>>
@@ -14,12 +15,8 @@ where
                 // NULL
                 0xffff => Ok(None),
                 _ => {
-                    let mut data = Vec::with_capacity(len as usize);
-
-                    for _ in 0..len {
-                        data.push(src.read_u8().await?);
-                    }
-
+                    let mut data = vec![0u8; len as usize];
+                    src.read_exact(&mut data).await?;
                     Ok(Some(data))
                 }
             }
@@ -37,25 +34,14 @@ where
                 _ => Vec::with_capacity(len as usize),
             };
 
-            let mut chunk_data_left = 0;
-
             loop {
-                if chunk_data_left == 0 {
-                    // We have no chunk. Start a new one.
-                    let chunk_size = src.read_u32_le().await? as usize;
-
-                    if chunk_size == 0 {
-                        break; // found a sentinel, we're done
-                    } else {
-                        chunk_data_left = chunk_size
-                    }
-                } else {
-                    // Just read a byte
-                    let byte = src.read_u8().await?;
-                    chunk_data_left -= 1;
-
-                    data.push(byte);
+                let chunk_size = src.read_u32_le().await? as usize;
+                if chunk_size == 0 {
+                    break; // sentinel
                 }
+                let start = data.len();
+                data.resize(start + chunk_size, 0);
+                src.read_exact(&mut data[start..]).await?;
             }
 
             Ok(Some(data))
